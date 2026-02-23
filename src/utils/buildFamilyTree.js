@@ -6,7 +6,7 @@ function extractId(url) {
   return m ? m[1] : null;
 }
 
-function normalizePersons(rawData) {
+export function normalizePersons(rawData) {
   // First pass: build URL-ID → canonical ID secondary index.
   // Some persons have a url like /profile/486/ but id field = 577.
   // References (father_url, spouse_urls, etc.) use the URL-based number,

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import FamilyTree from "./components/FamilyTree.jsx";
 import useOrgData from "./hooks/useOrgData.js";
-import { buildFamilyTree } from "./utils/buildFamilyTree.js";
+import { buildFamilyTree, normalizePersons } from "./utils/buildFamilyTree.js";
 
 export default function App() {
   const { data, loading, error } = useOrgData();
@@ -11,10 +11,15 @@ export default function App() {
   const treeResult = useMemo(() => {
     if (!data) return { roots: null, persons: null, error: "" };
     try {
+      const persons = normalizePersons(data);
       const roots = buildFamilyTree(data);
-      return { roots, error: "" };
+      return { roots, persons, error: "" };
     } catch (err) {
-      return { roots: null, error: err instanceof Error ? err.message : "Data tidak valid." };
+      return {
+        roots: null,
+        persons: null,
+        error: err instanceof Error ? err.message : "Data tidak valid.",
+      };
     }
   }, [data]);
 
@@ -27,7 +32,9 @@ export default function App() {
   const searchResults = useMemo(() => {
     if (!searchTerm.trim()) return [];
     const term = searchTerm.toLowerCase();
-    return allPersons.filter((p) => p.name.toLowerCase().includes(term)).slice(0, 10);
+    return allPersons
+      .filter((p) => p.name.toLowerCase().includes(term))
+      .slice(0, 10);
   }, [allPersons, searchTerm]);
 
   const highlightedIds = useMemo(() => {
@@ -35,7 +42,9 @@ export default function App() {
     if (selectedId) ids.add(selectedId);
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
-      allPersons.forEach((p) => { if (p.name.toLowerCase().includes(term)) ids.add(p.id); });
+      allPersons.forEach((p) => {
+        if (p.name.toLowerCase().includes(term)) ids.add(p.id);
+      });
     }
     return ids;
   }, [allPersons, searchTerm, selectedId]);
@@ -48,7 +57,9 @@ export default function App() {
           <p>Visualisasi pohon keluarga hierarkis.</p>
         </div>
         <div className="search-panel">
-          <label className="search-label" htmlFor="search-input">Cari anggota keluarga</label>
+          <label className="search-label" htmlFor="search-input">
+            Cari anggota keluarga
+          </label>
           <input
             id="search-input"
             className="search-input"
@@ -64,7 +75,10 @@ export default function App() {
                   key={p.id}
                   type="button"
                   className="search-result"
-                  onClick={() => { setSelectedId(p.id); setSearchTerm(""); }}
+                  onClick={() => {
+                    setSelectedId(p.id);
+                    setSearchTerm("");
+                  }}
                 >
                   {p.name}
                 </button>
@@ -86,14 +100,19 @@ export default function App() {
             <span>{error || treeResult.error}</span>
           </div>
         )}
-        {!loading && !error && !treeResult.error && treeResult.roots && (
-          <FamilyTree
-            roots={treeResult.roots}
-            highlightedIds={highlightedIds}
-            onSelectPerson={setSelectedId}
-            selectedId={selectedId}
-          />
-        )}
+        {!loading &&
+          !error &&
+          !treeResult.error &&
+          treeResult.roots &&
+          treeResult.persons && (
+            <FamilyTree
+              roots={treeResult.roots}
+              persons={treeResult.persons}
+              highlightedIds={highlightedIds}
+              onSelectPerson={setSelectedId}
+              selectedId={selectedId}
+            />
+          )}
       </main>
     </div>
   );

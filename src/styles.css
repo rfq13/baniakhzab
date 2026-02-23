@@ -164,6 +164,34 @@ body {
   color: #b91c1c;
 }
 
+.ft-filter-pair {
+  position: relative;
+  min-width: 220px;
+}
+
+.ft-filter-pair-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ft-filter-pair-display span:first-child {
+  flex: 1;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.ft-filter-pair-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+}
+
 /* ── FamilyTree shell ── */
 .ft-shell {
   flex: 1;

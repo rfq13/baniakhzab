@@ -12,6 +12,12 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.1;
 
+function parseGenerationNumber(gen) {
+  if (!gen) return null;
+  const m = String(gen).match(/(\d+)/);
+  return m ? Number(m[1]) : null;
+}
+
 function downloadDataUrl(dataUrl, filename) {
   const a = document.createElement("a");
   a.href = dataUrl;
@@ -21,6 +27,7 @@ function downloadDataUrl(dataUrl, filename) {
 
 const FamilyTree = memo(function FamilyTree({
   roots,
+  persons,
   highlightedIds,
   onSelectPerson,
   selectedId,
@@ -34,6 +41,11 @@ const FamilyTree = memo(function FamilyTree({
   const [exporting, setExporting] = useState(false);
   const [dualLines, setDualLines] = useState([]);
   const [dualCanvas, setDualCanvas] = useState({ width: 0, height: 0 });
+  const [pairKey, setPairKey] = useState("");
+  const [direction, setDirection] = useState("both");
+  const [generationFilter, setGenerationFilter] = useState("all");
+  const [pairSearchOpen, setPairSearchOpen] = useState(false);
+  const [pairSearchTerm, setPairSearchTerm] = useState("");
 
   // Pan state
   const panRef = useRef({
@@ -219,7 +231,211 @@ const FamilyTree = memo(function FamilyTree({
     [exportSize],
   );
 
-  if (!roots || roots.length === 0) {
+  const filterContext = React.useMemo(() => {
+    if (!persons) return null;
+    const genById = new Map();
+    const childrenByParent = new Map();
+    const spousePairs = [];
+
+    persons.forEach((p) => {
+      const genNum = parseGenerationNumber(p.generation);
+      genById.set(p.id, genNum);
+      if (p.fatherId) {
+        if (!childrenByParent.has(p.fatherId)) {
+          childrenByParent.set(p.fatherId, new Set());
+        }
+        childrenByParent.get(p.fatherId).add(p.id);
+      }
+      if (p.motherId) {
+        if (!childrenByParent.has(p.motherId)) {
+          childrenByParent.set(p.motherId, new Set());
+        }
+        childrenByParent.get(p.motherId).add(p.id);
+      }
+    });
+
+    persons.forEach((p) => {
+      p.spouseIds.forEach((sid) => {
+        if (p.id < sid) {
+          const other = persons.get(sid);
+          if (!other) return;
+          spousePairs.push({
+            key: `${p.id}:${sid}`,
+            label: `${p.name} · ${other.name}`,
+            a: p.id,
+            b: sid,
+          });
+        }
+      });
+    });
+
+    const generations = new Set();
+    genById.forEach((g) => {
+      if (g != null) generations.add(g);
+    });
+
+    return {
+      persons,
+      genById,
+      childrenByParent,
+      spousePairs,
+      generationOptions: Array.from(generations).sort((a, b) => a - b),
+    };
+  }, [persons]);
+
+  const currentPairLabel = React.useMemo(() => {
+    if (!filterContext || !pairKey) return "Semua pasangan";
+    const pair = filterContext.spousePairs.find((p) => p.key === pairKey);
+    return pair ? pair.label : "Semua pasangan";
+  }, [filterContext, pairKey]);
+
+  const filteredPairs = React.useMemo(() => {
+    if (!filterContext) return [];
+    const term = pairSearchTerm.trim().toLowerCase();
+    if (!term) return filterContext.spousePairs;
+    return filterContext.spousePairs.filter((p) =>
+      p.label.toLowerCase().includes(term),
+    );
+  }, [filterContext, pairSearchTerm]);
+
+  const visibleIds = React.useMemo(() => {
+    if (!filterContext) return null;
+    const { persons, genById, childrenByParent } = filterContext;
+    let baseVisible = null;
+
+    if (pairKey) {
+      const [a, b] = pairKey.split(":");
+      const focusIds = [a, b].filter(Boolean);
+      const result = new Set(focusIds);
+
+      const visitDesc = (id) => {
+        const children = childrenByParent.get(id);
+        if (!children) return;
+        children.forEach((cid) => {
+          if (!result.has(cid)) {
+            result.add(cid);
+            visitDesc(cid);
+          }
+        });
+      };
+
+      const visitAnc = (id) => {
+        const p = persons.get(id);
+        if (!p) return;
+        const parents = [p.fatherId, p.motherId].filter(Boolean);
+        parents.forEach((pid) => {
+          if (!result.has(pid)) {
+            result.add(pid);
+            visitAnc(pid);
+          }
+        });
+      };
+
+      if (direction === "down" || direction === "both") {
+        focusIds.forEach((id) => visitDesc(id));
+      }
+      if (direction === "up" || direction === "both") {
+        focusIds.forEach((id) => visitAnc(id));
+      }
+
+      const withSpouses = new Set(result);
+      result.forEach((id) => {
+        const p = persons.get(id);
+        if (!p) return;
+        p.spouseIds.forEach((sid) => withSpouses.add(sid));
+      });
+
+      baseVisible = withSpouses;
+    }
+
+    if (generationFilter !== "all") {
+      const genNum = Number(generationFilter);
+      const filtered = new Set();
+      const source = baseVisible || new Set(Array.from(persons.keys()));
+      source.forEach((id) => {
+        const g = genById.get(id);
+        if (g === genNum) filtered.add(id);
+      });
+      baseVisible = filtered;
+    }
+
+    if (!baseVisible) return null;
+    return baseVisible;
+  }, [filterContext, pairKey, direction, generationFilter]);
+
+  const filteredRoots = React.useMemo(() => {
+    if (!roots) return [];
+    if (!visibleIds) return roots;
+
+    const filterUnit = (unit) => {
+      if (unit.isStub) {
+        const visible = visibleIds.has(unit.stubPerson.id);
+        return visible ? unit : null;
+      }
+
+      if (unit.isPolygamous) {
+        const filteredMarriages = unit.marriages
+          .map((m) => {
+            const filteredChildren = (m.children || [])
+              .map(filterUnit)
+              .filter(Boolean);
+            const wifeVisible = visibleIds.has(m.wife.id);
+            if (!wifeVisible && filteredChildren.length === 0) return null;
+            return { ...m, children: filteredChildren };
+          })
+          .filter(Boolean);
+
+        const husbandVisible = unit.husband
+          ? visibleIds.has(unit.husband.id)
+          : false;
+
+        if (!husbandVisible && filteredMarriages.length === 0) return null;
+
+        return {
+          ...unit,
+          marriages: filteredMarriages,
+        };
+      }
+
+      const filteredChildren = (unit.children || [])
+        .map(filterUnit)
+        .filter(Boolean);
+
+      const hasVisibleSelf =
+        (unit.husband && visibleIds.has(unit.husband.id)) ||
+        (unit.wife && visibleIds.has(unit.wife.id));
+
+      if (!hasVisibleSelf && filteredChildren.length === 0) return null;
+
+      return {
+        ...unit,
+        children: filteredChildren,
+      };
+    };
+
+    return roots.map((r) => filterUnit(r)).filter(Boolean);
+  }, [roots, visibleIds]);
+
+  const filterStatusLabel = React.useMemo(() => {
+    if (!filterContext) return "Semua anggota keluarga";
+    const parts = [];
+    if (pairKey) {
+      const pair = filterContext.spousePairs.find((p) => p.key === pairKey);
+      if (pair) parts.push(`Pasangan: ${pair.label}`);
+    }
+    if (direction && pairKey) {
+      if (direction === "down") parts.push("Arah: Keturunan");
+      else if (direction === "up") parts.push("Arah: Leluhur");
+      else parts.push("Arah: Leluhur & keturunan");
+    }
+    if (generationFilter !== "all") {
+      parts.push(`Generasi: G${generationFilter}`);
+    }
+    if (parts.length === 0) return "Semua anggota keluarga";
+    return parts.join(" · ");
+  }, [filterContext, pairKey, direction, generationFilter]);
+
+  if (!filteredRoots || filteredRoots.length === 0) {
     return (
       <div className="state-box">
         <span>Tidak ada data silsilah ditemukan.</span>
@@ -289,9 +505,118 @@ const FamilyTree = memo(function FamilyTree({
             Export SVG
           </button>
         </div>
-        {exportError && (
-          <span className="chart-toolbar-error">{exportError}</span>
+        {filterContext && (
+          <div className="chart-toolbar-group">
+            <label className="chart-toolbar-label" htmlFor="ft-filter-pair">
+              Pasangan
+            </label>
+            <div className="ft-filter-pair">
+              <button
+                id="ft-filter-pair"
+                type="button"
+                className="chart-toolbar-select ft-filter-pair-display"
+                onClick={() => setPairSearchOpen((v) => !v)}
+              >
+                <span>{currentPairLabel}</span>
+                <span aria-hidden="true">▾</span>
+              </button>
+              {pairSearchOpen && (
+                <div className="ft-filter-pair-popover">
+                  <div className="search-panel">
+                    <input
+                      className="search-input"
+                      type="text"
+                      placeholder="Cari pasangan..."
+                      value={pairSearchTerm}
+                      onChange={(e) => setPairSearchTerm(e.target.value)}
+                      autoFocus
+                    />
+                    <div className="search-results">
+                      <button
+                        type="button"
+                        className="search-result"
+                        onClick={() => {
+                          setPairKey("");
+                          setPairSearchTerm("");
+                          setPairSearchOpen(false);
+                        }}
+                      >
+                        Semua pasangan
+                      </button>
+                      {filteredPairs.map((pair) => (
+                        <button
+                          key={pair.key}
+                          type="button"
+                          className="search-result"
+                          onClick={() => {
+                            setPairKey(pair.key);
+                            setPairSearchOpen(false);
+                          }}
+                        >
+                          {pair.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            <label
+              className="chart-toolbar-label"
+              htmlFor="ft-filter-direction"
+            >
+              Arah
+            </label>
+            <select
+              id="ft-filter-direction"
+              className="chart-toolbar-select"
+              value={direction}
+              onChange={(e) => setDirection(e.target.value)}
+            >
+              <option value="both">Leluhur & keturunan</option>
+              <option value="down">Keturunan saja</option>
+              <option value="up">Leluhur saja</option>
+            </select>
+            <label
+              className="chart-toolbar-label"
+              htmlFor="ft-filter-generation"
+            >
+              Generasi
+            </label>
+            <select
+              id="ft-filter-generation"
+              className="chart-toolbar-select"
+              value={generationFilter}
+              onChange={(e) => setGenerationFilter(e.target.value)}
+            >
+              <option value="all">Semua</option>
+              {filterContext.generationOptions.map((g) => (
+                <option key={g} value={g}>
+                  G{g}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
+        <div className="chart-toolbar-group">
+          <span className="chart-toolbar-label">{filterStatusLabel}</span>
+          {(pairKey || generationFilter !== "all") && (
+            <button
+              type="button"
+              className="chart-toolbar-button secondary"
+              onClick={() => {
+                setPairKey("");
+                setGenerationFilter("all");
+                setDirection("both");
+              }}
+            >
+              Reset filter
+            </button>
+          )}
+          {exportError && (
+            <span className="chart-toolbar-error">{exportError}</span>
+          )}
+        </div>
       </div>
 
       {/* Canvas */}
@@ -325,7 +650,7 @@ const FamilyTree = memo(function FamilyTree({
               ))}
             </svg>
           )}
-          {roots.map((root) => (
+          {filteredRoots.map((root) => (
             <FamilyUnit
               key={root.id}
               unit={root}
