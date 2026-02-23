@@ -355,6 +355,16 @@ body {
   box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.25);
 }
 
+.person-card.pc-relation-a {
+  border-color: #16a34a !important;
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.35);
+}
+
+.person-card.pc-relation-b {
+  border-color: #0ea5e9 !important;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.35);
+}
+
 .pc-avatar {
   width: 36px;
   height: 36px;

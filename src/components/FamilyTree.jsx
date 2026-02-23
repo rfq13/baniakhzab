@@ -26,6 +26,73 @@ function downloadDataUrl(dataUrl, filename) {
   a.click();
 }
 
+const DIRECTION_OPTIONS = [
+  { value: "both", label: "Leluhur & keturunan" },
+  { value: "down", label: "Keturunan saja" },
+  { value: "up", label: "Leluhur saja" },
+];
+
+const EXPORT_SIZE_OPTIONS = [
+  { value: "A4", label: "A4" },
+  { value: "A3", label: "A3" },
+  { value: "A2", label: "A2" },
+];
+
+function SearchableSelect({ id, value, onChange, options, placeholder }) {
+  const [open, setOpen] = React.useState(false);
+  const [term, setTerm] = React.useState("");
+  const current = options.find((o) => o.value === value);
+  const displayLabel = current ? current.label : placeholder || "Pilih...";
+  const filteredOptions = React.useMemo(() => {
+    const t = term.trim().toLowerCase();
+    if (!t) return options;
+    return options.filter((o) => o.label.toLowerCase().includes(t));
+  }, [options, term]);
+  return (
+    <div className="ft-filter-pair">
+      <button
+        id={id}
+        type="button"
+        className="chart-toolbar-select ft-filter-pair-display"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span>{displayLabel}</span>
+        <span aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="ft-filter-pair-popover">
+          <div className="search-panel">
+            <input
+              className="search-input"
+              type="text"
+              placeholder="Ketik untuk mencari..."
+              value={term}
+              onChange={(e) => setTerm(e.target.value)}
+              autoFocus
+            />
+            <div className="search-results">
+              {filteredOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className="search-result"
+                  onClick={() => {
+                    onChange(opt.value);
+                    setOpen(false);
+                    setTerm("");
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const FamilyTree = memo(function FamilyTree({
   roots,
   persons,
@@ -45,8 +112,6 @@ const FamilyTree = memo(function FamilyTree({
   const [pairKey, setPairKey] = useState("");
   const [direction, setDirection] = useState("both");
   const [generationFilter, setGenerationFilter] = useState("all");
-  const [pairSearchOpen, setPairSearchOpen] = useState(false);
-  const [pairSearchTerm, setPairSearchTerm] = useState("");
   const [relationAId, setRelationAId] = useState("");
   const [relationBId, setRelationBId] = useState("");
   const [relationKinds, setRelationKinds] = useState({
@@ -292,20 +357,17 @@ const FamilyTree = memo(function FamilyTree({
     };
   }, [persons]);
 
-  const currentPairLabel = React.useMemo(() => {
-    if (!filterContext || !pairKey) return "Semua pasangan";
-    const pair = filterContext.spousePairs.find((p) => p.key === pairKey);
-    return pair ? pair.label : "Semua pasangan";
-  }, [filterContext, pairKey]);
-
-  const filteredPairs = React.useMemo(() => {
+  const pairOptions = React.useMemo(() => {
     if (!filterContext) return [];
-    const term = pairSearchTerm.trim().toLowerCase();
-    if (!term) return filterContext.spousePairs;
-    return filterContext.spousePairs.filter((p) =>
-      p.label.toLowerCase().includes(term),
-    );
-  }, [filterContext, pairSearchTerm]);
+    const base = [
+      { value: "", label: "Semua pasangan" },
+      ...filterContext.spousePairs.map((p) => ({
+        value: p.key,
+        label: p.label,
+      })),
+    ];
+    return base;
+  }, [filterContext]);
 
   const visibleIds = React.useMemo(() => {
     if (!filterContext) return null;
@@ -372,58 +434,14 @@ const FamilyTree = memo(function FamilyTree({
     return baseVisible;
   }, [filterContext, pairKey, direction, generationFilter]);
 
-  const filteredRoots = React.useMemo(() => {
-    if (!roots) return [];
-    if (!visibleIds) return roots;
-
-    const filterUnit = (unit) => {
-      if (unit.isStub) {
-        const visible = visibleIds.has(unit.stubPerson.id);
-        return visible ? unit : null;
-      }
-
-      if (unit.isPolygamous) {
-        const filteredMarriages = unit.marriages
-          .map((m) => {
-            const filteredChildren = (m.children || [])
-              .map(filterUnit)
-              .filter(Boolean);
-            const wifeVisible = visibleIds.has(m.wife.id);
-            if (!wifeVisible && filteredChildren.length === 0) return null;
-            return { ...m, children: filteredChildren };
-          })
-          .filter(Boolean);
-
-        const husbandVisible = unit.husband
-          ? visibleIds.has(unit.husband.id)
-          : false;
-
-        if (!husbandVisible && filteredMarriages.length === 0) return null;
-
-        return {
-          ...unit,
-          marriages: filteredMarriages,
-        };
-      }
-
-      const filteredChildren = (unit.children || [])
-        .map(filterUnit)
-        .filter(Boolean);
-
-      const hasVisibleSelf =
-        (unit.husband && visibleIds.has(unit.husband.id)) ||
-        (unit.wife && visibleIds.has(unit.wife.id));
-
-      if (!hasVisibleSelf && filteredChildren.length === 0) return null;
-
-      return {
-        ...unit,
-        children: filteredChildren,
-      };
-    };
-
-    return roots.map((r) => filterUnit(r)).filter(Boolean);
-  }, [roots, visibleIds]);
+  const generationSelectOptions = React.useMemo(() => {
+    if (!filterContext) return [{ value: "all", label: "Semua" }];
+    const base = [{ value: "all", label: "Semua" }];
+    filterContext.generationOptions.forEach((g) => {
+      base.push({ value: String(g), label: `G${g}` });
+    });
+    return base;
+  }, [filterContext]);
 
   const filterStatusLabel = React.useMemo(() => {
     if (!filterContext) return "Semua anggota keluarga";
@@ -460,6 +478,90 @@ const FamilyTree = memo(function FamilyTree({
     }
     return findRelationPaths(persons, relationAId, relationBId, relationKinds);
   }, [persons, relationAId, relationBId, relationKinds]);
+
+  const relationHighlightIds = React.useMemo(() => {
+    if (
+      !relationResult ||
+      !relationResult.paths ||
+      relationResult.paths.length === 0
+    ) {
+      return null;
+    }
+    const s = new Set();
+    relationResult.paths.forEach((p) => {
+      p.nodes.forEach((id) => s.add(id));
+    });
+    return s;
+  }, [relationResult]);
+
+  const combinedHighlightedIds = React.useMemo(() => {
+    if (!highlightedIds && !relationHighlightIds) return null;
+    if (!highlightedIds) return relationHighlightIds;
+    if (!relationHighlightIds) return highlightedIds;
+    const s = new Set(highlightedIds);
+    relationHighlightIds.forEach((id) => s.add(id));
+    return s;
+  }, [highlightedIds, relationHighlightIds]);
+
+  const graphVisibleIds = React.useMemo(() => {
+    if (relationHighlightIds && relationAId && relationBId) {
+      return relationHighlightIds;
+    }
+    return visibleIds;
+  }, [relationHighlightIds, relationAId, relationBId, visibleIds]);
+
+  const filteredRoots = React.useMemo(() => {
+    if (!roots) return [];
+    if (!graphVisibleIds) return roots;
+
+    const filterUnit = (unit) => {
+      if (unit.isStub) {
+        const visible = graphVisibleIds.has(unit.stubPerson.id);
+        return visible ? unit : null;
+      }
+
+      if (unit.isPolygamous) {
+        const filteredMarriages = unit.marriages
+          .map((m) => {
+            const filteredChildren = (m.children || [])
+              .map(filterUnit)
+              .filter(Boolean);
+            const wifeVisible = graphVisibleIds.has(m.wife.id);
+            if (!wifeVisible && filteredChildren.length === 0) return null;
+            return { ...m, children: filteredChildren };
+          })
+          .filter(Boolean);
+
+        const husbandVisible = unit.husband
+          ? graphVisibleIds.has(unit.husband.id)
+          : false;
+
+        if (!husbandVisible && filteredMarriages.length === 0) return null;
+
+        return {
+          ...unit,
+          marriages: filteredMarriages,
+        };
+      }
+
+      const filteredChildren = (unit.children || [])
+        .map(filterUnit)
+        .filter(Boolean);
+
+      const hasVisibleSelf =
+        (unit.husband && graphVisibleIds.has(unit.husband.id)) ||
+        (unit.wife && graphVisibleIds.has(unit.wife.id));
+
+      if (!hasVisibleSelf && filteredChildren.length === 0) return null;
+
+      return {
+        ...unit,
+        children: filteredChildren,
+      };
+    };
+
+    return roots.map((r) => filterUnit(r)).filter(Boolean);
+  }, [roots, graphVisibleIds]);
 
   const describeStep = (step) => {
     if (!step.kind) return "Terhubung";
@@ -544,16 +646,13 @@ const FamilyTree = memo(function FamilyTree({
           <label className="chart-toolbar-label" htmlFor="ft-export-size">
             Ukuran cetak
           </label>
-          <select
+          <SearchableSelect
             id="ft-export-size"
-            className="chart-toolbar-select"
             value={exportSize}
-            onChange={(e) => setExportSize(e.target.value)}
-          >
-            <option value="A4">A4</option>
-            <option value="A3">A3</option>
-            <option value="A2">A2</option>
-          </select>
+            onChange={(val) => setExportSize(val)}
+            options={EXPORT_SIZE_OPTIONS}
+            placeholder="Pilih ukuran"
+          />
           <button
             type="button"
             className="chart-toolbar-button"
@@ -576,92 +675,39 @@ const FamilyTree = memo(function FamilyTree({
             <label className="chart-toolbar-label" htmlFor="ft-filter-pair">
               Pasangan
             </label>
-            <div className="ft-filter-pair">
-              <button
-                id="ft-filter-pair"
-                type="button"
-                className="chart-toolbar-select ft-filter-pair-display"
-                onClick={() => setPairSearchOpen((v) => !v)}
-              >
-                <span>{currentPairLabel}</span>
-                <span aria-hidden="true">▾</span>
-              </button>
-              {pairSearchOpen && (
-                <div className="ft-filter-pair-popover">
-                  <div className="search-panel">
-                    <input
-                      className="search-input"
-                      type="text"
-                      placeholder="Cari pasangan..."
-                      value={pairSearchTerm}
-                      onChange={(e) => setPairSearchTerm(e.target.value)}
-                      autoFocus
-                    />
-                    <div className="search-results">
-                      <button
-                        type="button"
-                        className="search-result"
-                        onClick={() => {
-                          setPairKey("");
-                          setPairSearchTerm("");
-                          setPairSearchOpen(false);
-                        }}
-                      >
-                        Semua pasangan
-                      </button>
-                      {filteredPairs.map((pair) => (
-                        <button
-                          key={pair.key}
-                          type="button"
-                          className="search-result"
-                          onClick={() => {
-                            setPairKey(pair.key);
-                            setPairSearchOpen(false);
-                          }}
-                        >
-                          {pair.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
+            <SearchableSelect
+              id="ft-filter-pair"
+              value={pairKey}
+              onChange={(val) => setPairKey(val)}
+              options={pairOptions}
+              placeholder="Semua pasangan"
+            />
             <label
               className="chart-toolbar-label"
               htmlFor="ft-filter-direction"
             >
               Arah
             </label>
-            <select
+            <SearchableSelect
               id="ft-filter-direction"
-              className="chart-toolbar-select"
               value={direction}
-              onChange={(e) => setDirection(e.target.value)}
-            >
-              <option value="both">Leluhur & keturunan</option>
-              <option value="down">Keturunan saja</option>
-              <option value="up">Leluhur saja</option>
-            </select>
+              onChange={(val) => setDirection(val)}
+              options={DIRECTION_OPTIONS}
+              placeholder="Pilih arah"
+            />
             <label
               className="chart-toolbar-label"
               htmlFor="ft-filter-generation"
             >
               Generasi
             </label>
-            <select
+            <SearchableSelect
               id="ft-filter-generation"
-              className="chart-toolbar-select"
               value={generationFilter}
-              onChange={(e) => setGenerationFilter(e.target.value)}
-            >
-              <option value="all">Semua</option>
-              {filterContext.generationOptions.map((g) => (
-                <option key={g} value={g}>
-                  G{g}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setGenerationFilter(val)}
+              options={generationSelectOptions}
+              placeholder="Semua generasi"
+            />
           </div>
         )}
         <div className="chart-toolbar-group">
@@ -709,37 +755,37 @@ const FamilyTree = memo(function FamilyTree({
             <label className="chart-toolbar-label" htmlFor="ft-relation-a">
               Entitas A
             </label>
-            <select
+            <SearchableSelect
               id="ft-relation-a"
-              className="chart-toolbar-select"
               value={relationAId}
-              onChange={(e) => setRelationAId(e.target.value)}
-            >
-              <option value="">Pilih entitas…</option>
-              {personOptions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setRelationAId(val)}
+              options={[
+                { value: "", label: "Pilih entitas…" },
+                ...personOptions.map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                })),
+              ]}
+              placeholder="Pilih entitas…"
+            />
           </div>
           <div className="ft-relation-field">
             <label className="chart-toolbar-label" htmlFor="ft-relation-b">
               Entitas B
             </label>
-            <select
+            <SearchableSelect
               id="ft-relation-b"
-              className="chart-toolbar-select"
               value={relationBId}
-              onChange={(e) => setRelationBId(e.target.value)}
-            >
-              <option value="">Pilih entitas…</option>
-              {personOptions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+              onChange={(val) => setRelationBId(val)}
+              options={[
+                { value: "", label: "Pilih entitas…" },
+                ...personOptions.map((p) => ({
+                  value: p.id,
+                  label: p.name,
+                })),
+              ]}
+              placeholder="Pilih entitas…"
+            />
           </div>
           <div className="ft-relation-field ft-relation-filters">
             <span className="chart-toolbar-label">Jenis hubungan</span>
@@ -853,9 +899,11 @@ const FamilyTree = memo(function FamilyTree({
             <FamilyUnit
               key={root.id}
               unit={root}
-              highlightedIds={highlightedIds}
+              highlightedIds={combinedHighlightedIds || highlightedIds}
               onSelectPerson={onSelectPerson}
               depth={0}
+              relationAId={relationAId}
+              relationBId={relationBId}
             />
           ))}
         </div>

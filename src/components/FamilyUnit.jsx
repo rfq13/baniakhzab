@@ -287,6 +287,8 @@ const FamilyUnit = memo(function FamilyUnit({
   highlightedIds,
   onSelectPerson,
   depth,
+  relationAId,
+  relationBId,
 }) {
   const totalW = useMemo(() => subtreeWidth(unit), [unit]);
   const isPolygamous = Boolean(unit.isPolygamous);
@@ -320,6 +322,8 @@ const FamilyUnit = memo(function FamilyUnit({
         <PersonCard
           person={unit.stubPerson}
           highlighted={highlightedIds?.has(unit.stubPerson.id)}
+          isRelationA={relationAId === unit.stubPerson.id}
+          isRelationB={relationBId === unit.stubPerson.id}
           onClick={() => onSelectPerson?.(unit.stubPerson.id)}
         />
         <StubIndicatorSVG />
@@ -352,6 +356,8 @@ const FamilyUnit = memo(function FamilyUnit({
             <PersonCard
               person={unit.husband}
               highlighted={highlightedIds?.has(unit.husband.id)}
+              isRelationA={relationAId === unit.husband.id}
+              isRelationB={relationBId === unit.husband.id}
               onClick={() => onSelectPerson?.(unit.husband.id)}
             />
           )}
@@ -388,6 +394,8 @@ const FamilyUnit = memo(function FamilyUnit({
                 <PersonCard
                   person={marriage.wife}
                   highlighted={highlightedIds?.has(marriage.wife?.id)}
+                  isRelationA={relationAId === marriage.wife?.id}
+                  isRelationB={relationBId === marriage.wife?.id}
                   onClick={() => onSelectPerson?.(marriage.wife?.id)}
                 />
                 {marriage.children.length > 0 && (
@@ -413,6 +421,8 @@ const FamilyUnit = memo(function FamilyUnit({
                           highlightedIds={highlightedIds}
                           onSelectPerson={onSelectPerson}
                           depth={depth + 1}
+                          relationAId={relationAId}
+                          relationBId={relationBId}
                         />
                       ))}
                     </div>
@@ -451,6 +461,8 @@ const FamilyUnit = memo(function FamilyUnit({
           <PersonCard
             person={unit.husband}
             highlighted={highlightedIds?.has(unit.husband.id)}
+            isRelationA={relationAId === unit.husband.id}
+            isRelationB={relationBId === unit.husband.id}
             onClick={() => onSelectPerson?.(unit.husband.id)}
           />
         )}
@@ -459,6 +471,8 @@ const FamilyUnit = memo(function FamilyUnit({
           <PersonCard
             person={unit.wife}
             highlighted={highlightedIds?.has(unit.wife.id)}
+            isRelationA={relationAId === unit.wife.id}
+            isRelationB={relationBId === unit.wife.id}
             onClick={() => onSelectPerson?.(unit.wife.id)}
           />
         )}
@@ -485,6 +499,8 @@ const FamilyUnit = memo(function FamilyUnit({
                 highlightedIds={highlightedIds}
                 onSelectPerson={onSelectPerson}
                 depth={depth + 1}
+                relationAId={relationAId}
+                relationBId={relationBId}
               />
             ))}
           </div>
