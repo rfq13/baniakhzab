@@ -449,6 +449,138 @@ export function buildFamilyTree(rawData) {
   return rootUnits;
 }
 
+const relationGraphCache = {
+  personsRef: null,
+  graph: null,
+};
+
+const relationPathsCache = new Map();
+
+function getRelationGraph(persons) {
+  if (relationGraphCache.personsRef === persons && relationGraphCache.graph) {
+    return relationGraphCache.graph;
+  }
+  const graph = new Map();
+  const ensure = (id) => {
+    if (!graph.has(id)) graph.set(id, []);
+    return graph.get(id);
+  };
+  persons.forEach((p) => {
+    ensure(p.id);
+  });
+  persons.forEach((p) => {
+    const pid = p.id;
+    if (p.fatherId && persons.has(p.fatherId)) {
+      ensure(pid).push({ to: p.fatherId, kind: "parent", dir: "to_parent" });
+      ensure(p.fatherId).push({
+        to: pid,
+        kind: "parent",
+        dir: "to_child",
+      });
+    }
+    if (p.motherId && persons.has(p.motherId)) {
+      ensure(pid).push({ to: p.motherId, kind: "parent", dir: "to_parent" });
+      ensure(p.motherId).push({
+        to: pid,
+        kind: "parent",
+        dir: "to_child",
+      });
+    }
+    p.spouseIds.forEach((sid) => {
+      if (!persons.has(sid)) return;
+      if (sid === pid) return;
+      ensure(pid).push({ to: sid, kind: "spouse", dir: "spouse" });
+    });
+  });
+  relationGraphCache.personsRef = persons;
+  relationGraphCache.graph = graph;
+  return graph;
+}
+
+export function findRelationPaths(persons, fromId, toId, allowedKinds) {
+  if (!persons || !fromId || !toId || fromId === toId) {
+    return { paths: [], shortestLength: null };
+  }
+  if (!persons.has(fromId) || !persons.has(toId)) {
+    return { paths: [], shortestLength: null };
+  }
+  const kinds = allowedKinds || { parent: true, spouse: true };
+  const key = JSON.stringify([fromId, toId, kinds]);
+  if (relationPathsCache.has(key)) {
+    return relationPathsCache.get(key);
+  }
+  const graph = getRelationGraph(persons);
+  const maxSteps = 16;
+  const dist = new Map();
+  const prev = new Map();
+  const queue = [];
+  dist.set(fromId, 0);
+  queue.push(fromId);
+  while (queue.length > 0) {
+    const id = queue.shift();
+    const d = dist.get(id);
+    if (d >= maxSteps) continue;
+    const edges = graph.get(id) || [];
+    for (const e of edges) {
+      if (!kinds[e.kind]) continue;
+      const nd = d + 1;
+      if (!dist.has(e.to) || nd < dist.get(e.to)) {
+        dist.set(e.to, nd);
+        prev.set(e.to, [id]);
+        queue.push(e.to);
+      } else if (nd === dist.get(e.to)) {
+        const list = prev.get(e.to);
+        if (list && !list.includes(id)) list.push(id);
+      }
+    }
+  }
+  if (!dist.has(toId)) {
+    const empty = { paths: [], shortestLength: null };
+    relationPathsCache.set(key, empty);
+    return empty;
+  }
+  const targetDist = dist.get(toId);
+  const paths = [];
+  const path = [];
+  const backtrack = (current) => {
+    path.push(current);
+    if (current === fromId) {
+      const nodes = [...path].reverse();
+      paths.push(nodes);
+    } else {
+      const prevList = prev.get(current) || [];
+      prevList.forEach((p) => backtrack(p));
+    }
+    path.pop();
+  };
+  backtrack(toId);
+
+  const detailedPaths = paths.map((nodes) => {
+    const steps = [];
+    for (let i = 0; i < nodes.length - 1; i += 1) {
+      const a = nodes[i];
+      const b = nodes[i + 1];
+      const edges = (graph.get(a) || []).filter((e) => e.to === b);
+      const edge = edges[0] || null;
+      steps.push({
+        fromId: a,
+        toId: b,
+        kind: edge ? edge.kind : null,
+        dir: edge ? edge.dir : null,
+      });
+    }
+    return {
+      nodes,
+      steps,
+      length: nodes.length - 1,
+    };
+  });
+
+  const result = { paths: detailedPaths, shortestLength: targetDist };
+  relationPathsCache.set(key, result);
+  return result;
+}
+
 // ── Layout metrics ────────────────────────────────────────────────────────────
 export const LAYOUT = {
   CARD_W: 164,

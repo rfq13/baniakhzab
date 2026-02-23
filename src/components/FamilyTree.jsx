@@ -1,6 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect, memo } from "react";
 import { toPng, toSvg } from "html-to-image";
 import FamilyUnit from "./FamilyUnit.jsx";
+import { findRelationPaths } from "../utils/buildFamilyTree.js";
 
 const PAPER_SIZES = {
   A4: { width: 3508, height: 2480 },
@@ -46,6 +47,14 @@ const FamilyTree = memo(function FamilyTree({
   const [generationFilter, setGenerationFilter] = useState("all");
   const [pairSearchOpen, setPairSearchOpen] = useState(false);
   const [pairSearchTerm, setPairSearchTerm] = useState("");
+  const [relationAId, setRelationAId] = useState("");
+  const [relationBId, setRelationBId] = useState("");
+  const [relationKinds, setRelationKinds] = useState({
+    parent: true,
+    spouse: true,
+  });
+  const [relationExporting, setRelationExporting] = useState(false);
+  const relationRef = useRef(null);
 
   // Pan state
   const panRef = useRef({
@@ -435,6 +444,63 @@ const FamilyTree = memo(function FamilyTree({
     return parts.join(" · ");
   }, [filterContext, pairKey, direction, generationFilter]);
 
+  const personOptions = React.useMemo(() => {
+    if (!persons) return [];
+    const arr = [];
+    persons.forEach((p) => {
+      arr.push({ id: p.id, name: p.name || p.id });
+    });
+    arr.sort((a, b) => a.name.localeCompare(b.name, "id"));
+    return arr;
+  }, [persons]);
+
+  const relationResult = React.useMemo(() => {
+    if (!persons || !relationAId || !relationBId) {
+      return { paths: [], shortestLength: null };
+    }
+    return findRelationPaths(persons, relationAId, relationBId, relationKinds);
+  }, [persons, relationAId, relationBId, relationKinds]);
+
+  const describeStep = (step) => {
+    if (!step.kind) return "Terhubung";
+    if (step.kind === "spouse") return "Pasangan";
+    if (step.kind === "parent") {
+      if (step.dir === "to_parent") return "Anak → orang tua";
+      if (step.dir === "to_child") return "Orang tua → anak";
+    }
+    return "Relasi";
+  };
+
+  const getPersonName = (id) => {
+    if (!persons) return id;
+    const p = persons.get(id);
+    return p ? p.name : id;
+  };
+
+  const handleExportRelation = async () => {
+    if (!relationRef.current || relationExporting) return;
+    try {
+      setRelationExporting(true);
+      const opts = {
+        pixelRatio: Math.min(
+          4,
+          Math.max(2, (window.devicePixelRatio || 1) * 2),
+        ),
+        skipFonts: true,
+        imagePlaceholder:
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3C/svg%3E",
+      };
+      const dataUrl = await toPng(relationRef.current, opts);
+      downloadDataUrl(dataUrl, "jalur-hubungan.png");
+    } catch (err) {
+      setExportError(
+        err instanceof Error ? err.message : "Gagal mengekspor jalur hubungan.",
+      );
+    } finally {
+      setRelationExporting(false);
+    }
+  };
+
   if (!filteredRoots || filteredRoots.length === 0) {
     return (
       <div className="state-box">
@@ -615,6 +681,139 @@ const FamilyTree = memo(function FamilyTree({
           )}
           {exportError && (
             <span className="chart-toolbar-error">{exportError}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="ft-relation-panel" ref={relationRef}>
+        <div className="ft-relation-header">
+          <span className="chart-toolbar-label">
+            Jalur hubungan antara dua entitas
+          </span>
+          <button
+            type="button"
+            className="chart-toolbar-button secondary"
+            onClick={handleExportRelation}
+            disabled={
+              relationExporting ||
+              !relationResult ||
+              !relationResult.paths ||
+              relationResult.paths.length === 0
+            }
+          >
+            {relationExporting ? "Mengekspor…" : "Export jalur (PNG)"}
+          </button>
+        </div>
+        <div className="ft-relation-form">
+          <div className="ft-relation-field">
+            <label className="chart-toolbar-label" htmlFor="ft-relation-a">
+              Entitas A
+            </label>
+            <select
+              id="ft-relation-a"
+              className="chart-toolbar-select"
+              value={relationAId}
+              onChange={(e) => setRelationAId(e.target.value)}
+            >
+              <option value="">Pilih entitas…</option>
+              {personOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="ft-relation-field">
+            <label className="chart-toolbar-label" htmlFor="ft-relation-b">
+              Entitas B
+            </label>
+            <select
+              id="ft-relation-b"
+              className="chart-toolbar-select"
+              value={relationBId}
+              onChange={(e) => setRelationBId(e.target.value)}
+            >
+              <option value="">Pilih entitas…</option>
+              {personOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="ft-relation-field ft-relation-filters">
+            <span className="chart-toolbar-label">Jenis hubungan</span>
+            <label className="ft-relation-checkbox">
+              <input
+                type="checkbox"
+                checked={relationKinds.parent}
+                onChange={(e) =>
+                  setRelationKinds((prev) => ({
+                    ...prev,
+                    parent: e.target.checked,
+                  }))
+                }
+              />
+              <span>Orang tua/anak</span>
+            </label>
+            <label className="ft-relation-checkbox">
+              <input
+                type="checkbox"
+                checked={relationKinds.spouse}
+                onChange={(e) =>
+                  setRelationKinds((prev) => ({
+                    ...prev,
+                    spouse: e.target.checked,
+                  }))
+                }
+              />
+              <span>Pasangan</span>
+            </label>
+          </div>
+        </div>
+        <div className="ft-relation-body">
+          {!relationAId || !relationBId ? (
+            <div className="ft-relation-empty">
+              Pilih dua entitas untuk melihat jalur hubungan.
+            </div>
+          ) : !relationResult.paths || relationResult.paths.length === 0 ? (
+            <div className="ft-relation-empty">
+              Tidak ada jalur hubungan yang ditemukan dengan filter saat ini.
+            </div>
+          ) : (
+            <div className="ft-relation-paths">
+              <div className="ft-relation-summary">
+                {relationResult.paths.length} jalur ditemukan · jarak terpendek{" "}
+                {relationResult.shortestLength} langkah
+              </div>
+              {relationResult.paths.map((p, idx) => (
+                <div key={p.nodes.join("->")} className="ft-relation-path">
+                  <div className="ft-relation-path-header">
+                    <span>
+                      Jalur {idx + 1} · {p.length} langkah
+                    </span>
+                    {idx === 0 && (
+                      <span className="ft-relation-badge">Terpendek</span>
+                    )}
+                  </div>
+                  <div className="ft-relation-path-line">
+                    <div className="ft-relation-node">
+                      {getPersonName(p.nodes[0])}
+                    </div>
+                    {p.steps.map((step, i) => (
+                      <React.Fragment key={`${step.fromId}-${step.toId}-${i}`}>
+                        <div className="ft-relation-edge">
+                          {describeStep(step)}
+                        </div>
+                        <div className="ft-relation-node">
+                          {getPersonName(step.toId)}
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
