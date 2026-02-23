@@ -8,9 +8,9 @@ const PAPER_SIZES = {
   A2: { width: 7016, height: 4961 },
 };
 
-const MIN_ZOOM = 0.08;
-const MAX_ZOOM = 2;
-const ZOOM_STEP = 0.15;
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 0.1;
 
 function downloadDataUrl(dataUrl, filename) {
   const a = document.createElement("a");
@@ -156,6 +156,7 @@ const FamilyTree = memo(function FamilyTree({
     const onWheel = (e) => {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
+        e.stopPropagation();
         setZoom((z) =>
           Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z - e.deltaY * 0.001)),
         );

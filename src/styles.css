@@ -28,6 +28,9 @@ body {
   flex-wrap: wrap;
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 40;
 }
 
 .app-header h1 {
@@ -168,6 +171,7 @@ body {
   flex-direction: column;
   overflow: hidden;
   background: #f8fafc;
+  position: relative;
 }
 
 .ft-toolbar {
@@ -179,6 +183,9 @@ body {
   background: #ffffff;
   flex-wrap: wrap;
   flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 30;
 }
 
 .ft-zoom-btn {
