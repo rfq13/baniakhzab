@@ -401,7 +401,7 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 
 	var payload whatsappWebhookPayload
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid webhook payload")
+		writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "invalid webhook payload"})
 		return
 	}
 
@@ -415,13 +415,13 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 
 	fromJID := payload.Payload.From
 	if fromJID == "" {
-		writeError(w, http.StatusBadRequest, "missing from")
+		writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "missing from"})
 		return
 	}
 
 	waNumber := normalizeWANumber(fromJID)
 	if waNumber == "" {
-		writeError(w, http.StatusBadRequest, "invalid from")
+		writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "invalid from"})
 		return
 	}
 
@@ -459,21 +459,21 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 		token, err := randomToken()
 		if err != nil {
 			s.logger.Error("generate token failed", "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to generate token")
+			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "failed to generate token"})
 			return
 		}
 
 		expiresAt := time.Now().Add(s.oneTimeTTL)
 		if _, err := s.store.Tokens.CreateOneTime(ctx, person.WANumber, token, expiresAt); err != nil {
 			s.logger.Error("store token failed", "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to store token")
+			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "failed to store token"})
 			return
 		}
 
 		loginURL, err := url.Parse(s.cfg.Auth.FrontendBaseURL)
 		if err != nil {
 			s.logger.Error("invalid frontend base url", "error", err)
-			writeError(w, http.StatusInternalServerError, "invalid configuration")
+			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "invalid configuration"})
 			return
 		}
 		loginURL.Path = "/login"
@@ -484,7 +484,7 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 		msg := "Silakan klik link berikut untuk login: " + loginURL.String()
 		if err := s.wa.SendText(ctx, waNumber, msg); err != nil {
 			s.logger.Error("send whatsapp message failed", "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to send whatsapp message")
+			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "failed to send whatsapp message"})
 			return
 		}
 
@@ -495,7 +495,7 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 	if bodyLower == ajnabiyyahPhrase {
 		if err := s.handleWhatsAppAjnabiyyahCommand(ctx, waNumber); err != nil {
 			s.logger.Error("handle whatsapp ajnabiyyah command failed", "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to process ajnabiyyah command")
+			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "failed to process ajnabiyyah command"})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -513,7 +513,7 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := s.handleWhatsAppRelationshipCommand(ctx, waNumber, name); err != nil {
 			s.logger.Error("handle whatsapp relationship command failed", "error", err)
-			writeError(w, http.StatusInternalServerError, "failed to process relationship command")
+			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "failed to process relationship command"})
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
@@ -531,7 +531,7 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("langchaingo agent failed", "error", err)
 		_ = s.wa.SendText(ctx, waNumber, "Maaf, sistem AI sedang mengalami gangguan saat memproses pertanyaan Anda.")
-		writeError(w, http.StatusInternalServerError, "agent error")
+		writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "agent error"})
 		return
 	}
 
