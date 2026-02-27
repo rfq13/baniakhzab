@@ -7,6 +7,13 @@ export default defineConfig({
     fs: {
       allow: ["D:/Ngoding/expr/baniakhzab"],
     },
+    proxy: {
+      "/api": {
+        target: "http://localhost:8080",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   test: {
     globals: true,

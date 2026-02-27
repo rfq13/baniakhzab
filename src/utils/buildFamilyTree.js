@@ -34,6 +34,11 @@ export function normalizePersons(rawData) {
         : rawGender === "Perempuan"
           ? "female"
           : "unknown";
+    const fatherIdDirect = p.father_id ? String(p.father_id) : null;
+    const motherIdDirect = p.mother_id ? String(p.mother_id) : null;
+    const spouseIdsDirect = Array.isArray(p.spouse_ids)
+      ? p.spouse_ids.map(String)
+      : [];
     persons.set(id, {
       id,
       name: p.name || "Tanpa Nama",
@@ -41,9 +46,12 @@ export function normalizePersons(rawData) {
       isMantu: Boolean(p.is_mantu),
       generation: p.generation || null,
       imgUrl: p.img_url || "",
-      fatherId: resolveRef(p.father_url),
-      motherId: resolveRef(p.mother_url),
-      spouseIds: (p.spouse_urls || []).map(resolveRef).filter(Boolean),
+      fatherId: fatherIdDirect ?? resolveRef(p.father_url),
+      motherId: motherIdDirect ?? resolveRef(p.mother_url),
+      spouseIds:
+        spouseIdsDirect.length > 0
+          ? spouseIdsDirect
+          : (p.spouse_urls || []).map(resolveRef).filter(Boolean),
     });
   });
   // Remove IDs that point outside the dataset

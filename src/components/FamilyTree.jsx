@@ -112,8 +112,16 @@ const FamilyTree = memo(function FamilyTree({
   const [pairKey, setPairKey] = useState("");
   const [direction, setDirection] = useState("both");
   const [generationFilter, setGenerationFilter] = useState("all");
-  const [relationAId, setRelationAId] = useState("");
-  const [relationBId, setRelationBId] = useState("");
+  const [relationAId, setRelationAId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const params = new URLSearchParams(window.location.search);
+    return params.get("a") || "";
+  });
+  const [relationBId, setRelationBId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const params = new URLSearchParams(window.location.search);
+    return params.get("b") || "";
+  });
   const [relationKinds, setRelationKinds] = useState({
     parent: true,
     spouse: true,

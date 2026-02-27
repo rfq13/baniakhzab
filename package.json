@@ -6,6 +6,10 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
+    "dev:backend": "cd backend && go run ./cmd/api",
+    "seed": "cd backend && go run ./cmd/seed -file ../with-gender.json",
+    "check": "cd backend && go run ./cmd/check -file ../with-gender.json",
+    "dev:all": "node dev-all.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run"

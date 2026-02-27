@@ -1,0 +1,10 @@
+=== SYNC REPORT (using positional mapping) ===
+JSON entries: 640, DB entries: 640
+Name mismatches: 0
+Gender mismatches: 0
+URL mismatches: 0
+Wrong father_id: 0
+Wrong mother_id: 0
+Wrong spouse_ids: 0
+
+Generated 0 SQL fix statements
