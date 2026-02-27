@@ -5,7 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     fs: {
-      allow: ["D:/Ngoding/expr/baniakhzab"],
+      allow: ["."],
     },
     proxy: {
       "/api": {

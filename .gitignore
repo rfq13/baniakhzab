@@ -11,6 +11,19 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.production
+gowa/src/.env.production
+
+# Backend binary
+backend/tmp_server
+
+# Temp scripts
+sync_check*
+debug_tmp*
+debug_output*
+fix_data*
+sync_report*
+compare-json*
 
 # Logs
 logs/

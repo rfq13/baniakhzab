@@ -1,0 +1,47 @@
+services:
+  # ---- Frontend (React/Vite built → served by Nginx) ----
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  # ---- Backend (Go API) ----
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile.backend
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      - GOWA_BASE_URL=http://gowa:3000
+    expose:
+      - "8080"
+    depends_on:
+      - gowa
+
+  # ---- GoWA (WhatsApp API) ----
+  gowa:
+    build:
+      context: ./gowa
+      dockerfile: ./docker/golang.Dockerfile
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "200k"
+        max-file: "10"
+    env_file:
+      - gowa/src/.env.production
+    volumes:
+      - gowa_data:/app/storages
+    expose:
+      - "3000"
+
+volumes:
+  gowa_data:
