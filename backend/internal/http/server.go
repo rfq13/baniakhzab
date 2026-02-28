@@ -61,6 +61,12 @@ func NewServer(cfg config.Config, store *db.Store, l logger) *Server {
 		l.Info("loaded gowa device id from db", "device_id", savedID)
 	}
 
+	if err := store.Chat.EnsureTable(ctx); err != nil {
+		l.Error("failed to ensure chat tables", "error", err)
+	} else {
+		l.Info("chat memory tables ready")
+	}
+
 	jwtManager := auth.NewJWTManager(cfg.Auth.JWTSecret)
 	llmClient := llm.NewClient(cfg.LLM)
 
@@ -425,12 +431,18 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	person, _ := s.store.Persons.GetByWANumber(ctx, waNumber)
+	person, err := s.store.Persons.GetByWANumber(ctx, waNumber)
+	if err != nil {
+		s.logger.Info("GetByWANumber failed during webhook", "fromJID", fromJID, "waNumber", waNumber, "error", err)
+	}
+
 	pid := ""
 	pname := payload.Payload.FromName
 	if person != nil {
 		pid = person.ID
 		pname = person.FullName
+	} else {
+		s.logger.Info("GetByWANumber returned nil person (not found)", "fromJID", fromJID, "waNumber", waNumber)
 	}
 	msgData := map[string]any{
 		"id":         payload.Payload.ID,
@@ -493,12 +505,14 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if bodyLower == ajnabiyyahPhrase {
-		if err := s.handleWhatsAppAjnabiyyahCommand(ctx, waNumber); err != nil {
-			s.logger.Error("handle whatsapp ajnabiyyah command failed", "error", err)
-			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "failed to process ajnabiyyah command"})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		writeJSON(w, http.StatusOK, map[string]string{"status": "processing"})
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			if err := s.handleWhatsAppAjnabiyyahCommand(bgCtx, waNumber); err != nil {
+				s.logger.Error("handle whatsapp ajnabiyyah command failed", "error", err)
+			}
+		}()
 		return
 	}
 
@@ -511,12 +525,15 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "invalid-relationship-command"})
 			return
 		}
-		if err := s.handleWhatsAppRelationshipCommand(ctx, waNumber, name); err != nil {
-			s.logger.Error("handle whatsapp relationship command failed", "error", err)
-			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "failed to process relationship command"})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "processing"})
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			if err := s.handleWhatsAppRelationshipCommand(bgCtx, waNumber, name); err != nil {
+				s.logger.Error("handle whatsapp relationship command failed", "error", err)
+			}
+		}()
 		return
 	}
 
@@ -527,19 +544,23 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	aiRes, err := s.llm.ChatWithAgent(ctx, s.store, person, body)
-	if err != nil {
-		s.logger.Error("langchaingo agent failed", "error", err)
-		_ = s.wa.SendText(ctx, waNumber, "Maaf, sistem AI sedang mengalami gangguan saat memproses pertanyaan Anda.")
-		writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "agent error"})
-		return
-	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "processing"})
 
-	if err := s.wa.SendText(ctx, waNumber, aiRes); err != nil {
-		s.logger.Error("send whatsapp agent response failed", "error", err)
-	}
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		aiRes, err := s.llm.ChatWithMemory(bgCtx, s.store, person, waNumber, body)
+		if err != nil {
+			s.logger.Error("chat with memory failed", "error", err)
+			_ = s.wa.SendText(bgCtx, waNumber, "Maaf, sistem AI sedang mengalami gangguan saat memproses pertanyaan Anda.")
+			return
+		}
+
+		if err := s.wa.SendText(bgCtx, waNumber, aiRes); err != nil {
+			s.logger.Error("send whatsapp agent response failed", "error", err)
+		}
+	}()
 }
 
 func (s *Server) handleWhatsAppAjnabiyyahCommand(ctx context.Context, waNumber string) error {

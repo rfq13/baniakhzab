@@ -70,6 +70,7 @@ type chatRequest struct {
 	Messages   []chatMessage    `json:"messages"`
 	Tools      []toolDefinition `json:"tools,omitempty"`
 	ToolChoice string           `json:"tool_choice,omitempty"`
+	MaxTokens  int              `json:"max_tokens,omitempty"`
 }
 
 type chatChoice struct {
@@ -204,21 +205,21 @@ func (c *Client) RunAjnabiyyah(ctx context.Context, store *db.Store, personAID, 
 	return res, nil
 }
 
-func (c *Client) GenerateAjnabiyyahSQL(ctx context.Context, naturalLanguage string) (*SQLQueryResult, error) {
+func (c *Client) GenerateDatabaseSQL(ctx context.Context, naturalLanguage string) (*SQLQueryResult, error) {
 	if c.apiKey == "" {
 		return nil, fmt.Errorf("LLM_API_KEY is not configured")
 	}
 
 	text := strings.TrimSpace(naturalLanguage)
 	if text == "" {
-		text = "Buat query SQL untuk mengambil daftar anggota keluarga yang berstatus ajnabi (bukan mahram) terhadap satu orang tertentu."
+		return nil, fmt.Errorf("natural language query is empty")
 	}
 
 	systemPrompt := "Kamu adalah asisten SQL untuk sistem silsilah keluarga Bani Akhzab. " +
 		"Skema utama: tabel persons dengan kolom id (UUID), full_name (text), gender (text), father_id (UUID, nullable), mother_id (UUID, nullable), " +
 		"spouse_ids (UUID[]), generation (text). " +
-		"Buat query SELECT yang hanya membaca data (tanpa INSERT/UPDATE/DELETE) untuk membantu analisis siapa saja yang ajnabi (bukan mahram) " +
-		"berdasarkan garis keturunan dan hubungan pernikahan. " +
+		"Gunakan PostgreSQL syntax. Dilarang menggunakan 'WITH RECURSIVE' jika bisa menggunakan join sederhana yang lebih aman. " +
+		"Buat query SELECT yang hanya membaca data (tanpa INSERT/UPDATE/DELETE) untuk menjawab pertanyaan pengguna. " +
 		"Respon SELALU dalam format JSON dengan bentuk: {\"sql\": \"...\", \"explanation\": \"...\"}."
 
 	messages := []chatMessage{
@@ -373,6 +374,7 @@ func (c *Client) ChatWithAgent(ctx context.Context, store *db.Store, user *db.Pe
 		NewSearchPersonTool(store),
 		NewGetPersonFamilyTool(store),
 		NewCheckRelationshipTool(c, store),
+		NewAskDatabaseTool(c, store),
 	}
 
 	agent := agents.NewOpenAIFunctionsAgent(llm, agentTools)

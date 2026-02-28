@@ -47,8 +47,8 @@ func main() {
 	httpServer := &http.Server{
 		Addr:         cfg.Addr,
 		Handler:      server.Routes(),
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 120 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 

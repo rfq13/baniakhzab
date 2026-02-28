@@ -13,6 +13,7 @@ type Store struct {
 	Persons  PersonStore
 	Tokens   WATokenStore
 	Settings SettingsStore
+	Chat     ChatStore
 }
 
 func NewStore(db *sql.DB) *Store {
@@ -21,6 +22,7 @@ func NewStore(db *sql.DB) *Store {
 		Persons:  PersonStore{DB: db},
 		Tokens:   WATokenStore{DB: db},
 		Settings: SettingsStore{DB: db},
+		Chat:     ChatStore{DB: db},
 	}
 }
 

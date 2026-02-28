@@ -1,7 +1,7 @@
 // Compare with-gender.json with DB data via API
-const fs = require('fs');
+import fs from 'fs';
 const jsonData = JSON.parse(fs.readFileSync('d:/Ngoding/expr/baniakhzab/with-gender.json', 'utf8'));
-const http = require('http');
+import http from 'http';
 
 function extractProfileId(url) {
     if (!url) return null;

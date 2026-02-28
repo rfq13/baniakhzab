@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/baniakhzab/backend/internal/db"
 	"github.com/tmc/langchaingo/callbacks"
@@ -183,4 +184,85 @@ func (t GetPersonFamilyTool) CallWithContext(ctx context.Context, input string, 
 }
 func (t CheckRelationshipTool) CallWithContext(ctx context.Context, input string, callbacksHandler ...callbacks.Handler) (string, error) {
 	return t.Call(ctx, input)
+}
+func (t AskDatabaseTool) CallWithContext(ctx context.Context, input string, callbacksHandler ...callbacks.Handler) (string, error) {
+	return t.Call(ctx, input)
+}
+
+type AskDatabaseTool struct {
+	client *Client
+	store  *db.Store
+}
+
+var _ tools.Tool = AskDatabaseTool{}
+
+func NewAskDatabaseTool(c *Client, store *db.Store) *AskDatabaseTool {
+	return &AskDatabaseTool{client: c, store: store}
+}
+
+func (t AskDatabaseTool) Name() string {
+	return "AskDatabase"
+}
+
+func (t AskDatabaseTool) Description() string {
+	return `Tanya langsung ke database silsilah keluarga dalam bentuk SQL (akan digenerate otomatis). Gunakan tool ini jika ditanya siapa saudara ayah, paman, sepupu, keponakan, cucu jemaah, atau jika butuh mencari sekumpulan anggota keluarga berdasarkan kriteria tertentu.
+Input harus berupa JSON dengan key "question" berisi pertanyaan spesifik dalam bahasa alami (contoh: "siapa saja sepupu saya?"). Jangan gunakan ID dalam pertanyaannya jika tidak perlu, sebut nama atau diri pengguna jika konteksnya sudah jelas.`
+}
+
+func (t AskDatabaseTool) Call(ctx context.Context, input string) (string, error) {
+	var payload struct {
+		Question string `json:"question"`
+	}
+	if err := json.Unmarshal([]byte(input), &payload); err != nil {
+		payload.Question = input
+	}
+
+	res, err := t.client.GenerateDatabaseSQL(ctx, payload.Question)
+	if err != nil {
+		return fmt.Sprintf("Gagal generate SQL: %v", err), nil
+	}
+
+	sqlStr := strings.TrimSpace(res.SQL)
+	if !strings.HasPrefix(strings.ToUpper(sqlStr), "SELECT") && !strings.HasPrefix(strings.ToUpper(sqlStr), "WITH") {
+		return "Hanya query SELECT yang diperbolehkan demi keamanan.", nil
+	}
+
+	rows, err := t.store.DB.QueryContext(ctx, sqlStr)
+	if err != nil {
+		return fmt.Sprintf("Gagal mengeksekusi referensi query (%s): %v. Penjelasan LLM: %s", sqlStr, err, res.Explanation), nil
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return "", err
+	}
+
+	var results []map[string]any
+	for rows.Next() {
+		columns := make([]any, len(cols))
+		columnPointers := make([]any, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
+		}
+
+		if err := rows.Scan(columnPointers...); err != nil {
+			return "", err
+		}
+
+		rowMap := make(map[string]any)
+		for i, colName := range cols {
+			val := columnPointers[i].(*any)
+			switch v := (*val).(type) {
+			case []byte:
+				rowMap[colName] = string(v)
+			default:
+				rowMap[colName] = v
+			}
+		}
+		results = append(results, rowMap)
+	}
+
+	out, _ := json.Marshal(results)
+	return fmt.Sprintf("Hasil query:\n%s\nPenjelasan Query yang digunakan LLM: %s", string(out), res.Explanation), nil
 }
