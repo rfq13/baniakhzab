@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { getAuthHeaders } from "../utils/auth";
 import { X, Save, Phone, Mail } from "lucide-react";
 
 export default function AdminSettingsModal({ onClose }) {
@@ -14,7 +13,9 @@ export default function AdminSettingsModal({ onClose }) {
     useEffect(() => {
         const fetchSettings = async () => {
             try {
-                const response = await fetch("/api/v1/settings/landing");
+                const response = await fetch("/api/v1/settings/landing", {
+                    credentials: "include",
+                });
                 if (response.ok) {
                     const data = await response.json();
                     setWhatsapp(data.whatsapp || "");
@@ -41,8 +42,8 @@ export default function AdminSettingsModal({ onClose }) {
         try {
             const response = await fetch("/api/v1/settings/landing", {
                 method: "PUT",
+                credentials: "include",
                 headers: {
-                    ...getAuthHeaders(),
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
