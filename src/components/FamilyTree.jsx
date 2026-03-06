@@ -112,7 +112,7 @@ const FamilyTree = memo(function FamilyTree({
   // Transform-based zoom and pan state
   const [transform, setTransform] = useState({ x: 0, y: 0, zoom: 0.5 });
   const transformRef = useRef({ x: 0, y: 0, zoom: 0.5 });
-  const targetTransformRef = useRef({ startX: 0, startY: 0, startZoom: 0.5, targetX: 0, targetY: 0, targetZoom: 0.5, lastTimestamp: 0 });
+  const targetTransformRef = useRef({ startX: 0, startY: 0, startZoom: 0.5, targetX: 0, targetY: 0, targetZoom: 0.5, startTimestamp: 0 });
   const animationRef = useRef(null);
   const initialFittedRef = useRef(false);
 
@@ -172,8 +172,7 @@ const FamilyTree = memo(function FamilyTree({
   // ===== Smooth Animation Loop =====
   const runAnimation = useCallback(() => {
     const now = performance.now();
-    const delta = now - targetTransformRef.current.lastTimestamp;
-    targetTransformRef.current.lastTimestamp = now;
+    const delta = now - targetTransformRef.current.startTimestamp;
 
     const progress = Math.min(delta / SMOOTH_ZOOM_DURATION, 1);
     const easedProgress = easeOutCubic(progress);
@@ -202,7 +201,7 @@ const FamilyTree = memo(function FamilyTree({
       targetX: newX,
       targetY: newY,
       targetZoom: newZoom,
-      lastTimestamp: performance.now(),
+      startTimestamp: performance.now(),
     };
 
     animationRef.current = requestAnimationFrame(runAnimation);

@@ -67,9 +67,9 @@ export default function AdminSettingsModal({ onClose }) {
     };
 
     return (
-        <div className="modal-overlay">
-            <div className="modal-wrapper">
-                <div className="modal-content" style={{ maxWidth: '500px' }}>
+        <div className="modal-overlay" onClick={onClose}>
+            <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-content-wrapper">
                     <div className="modal-header">
                         <h2>Pengaturan Landing Page</h2>
                         <button className="close-btn" onClick={onClose}>
@@ -85,7 +85,7 @@ export default function AdminSettingsModal({ onClose }) {
                             </div>
                         ) : (
                             <form onSubmit={handleSubmit} className="form-container">
-                                {error && <div className="error-message">{error}</div>}
+                                {error && <div className="add-person-error">{error}</div>}
                                 {success && (
                                     <div className="success-message" style={{ backgroundColor: '#d1fae5', color: '#065f46', padding: '0.75rem', borderRadius: '0.375rem', marginBottom: '1rem', border: '1px solid #34d399' }}>
                                         Pengaturan berhasil disimpan!
@@ -94,7 +94,7 @@ export default function AdminSettingsModal({ onClose }) {
 
                                 <div className="form-group">
                                     <label htmlFor="whatsapp">
-                                        <Phone size={16} style={{ display: 'inline-block', marginRight: '8px', verticalAlign: 'text-bottom' }} />
+                                        <Phone size={16} />
                                         Nomor WhatsApp
                                     </label>
                                     <input
@@ -112,7 +112,7 @@ export default function AdminSettingsModal({ onClose }) {
 
                                 <div className="form-group">
                                     <label htmlFor="email">
-                                        <Mail size={16} style={{ display: 'inline-block', marginRight: '8px', verticalAlign: 'text-bottom' }} />
+                                        <Mail size={16} />
                                         Alamat Email
                                     </label>
                                     <input
@@ -125,11 +125,11 @@ export default function AdminSettingsModal({ onClose }) {
                                     />
                                 </div>
 
-                                <div className="modal-footer" style={{ marginTop: '2rem' }}>
+                                <div className="modal-footer">
                                     <button type="button" className="btn-secondary" onClick={onClose} disabled={loading}>
                                         Batal
                                     </button>
-                                    <button type="submit" className="btn-primary" disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <button type="submit" className="btn-primary" disabled={loading}>
                                         <Save size={16} />
                                         {loading ? "Menyimpan..." : "Simpan Pengaturan"}
                                     </button>

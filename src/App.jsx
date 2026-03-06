@@ -85,31 +85,21 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
+        <div className="app-header-top">
+          <div className="app-header-title">
             <h1>Silsilah Keturunan Bani Akhzab</h1>
             <p>Visualisasi pohon keluarga hierarkis.</p>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div className="app-header-actions">
             <button
               onClick={() => setShowAdminSettings(true)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db',
-                padding: '8px 16px', borderRadius: '20px', cursor: 'pointer',
-                fontWeight: 'bold', boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
-              }}
+              className="btn-header-outline"
             >
               Pengaturan Landing
             </button>
             <button
               onClick={() => setShowWhatsAppPanel(true)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                backgroundColor: '#25D366', color: 'white', border: 'none',
-                padding: '8px 16px', borderRadius: '20px', cursor: 'pointer',
-                fontWeight: 'bold', boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
-              }}
+              className="btn-header-solid"
             >
               WhatsApp Admin
             </button>

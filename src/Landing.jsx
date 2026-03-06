@@ -450,8 +450,8 @@ export default function Landing() {
                     <div
                       className="absolute inset-0 bg-cover bg-center scale-110 hover:scale-100 transition-transform duration-700"
                       style={{
-                        backgroundImage: "url('https://images.unsplash.com/photo-1590076084184-c2cbd55f5090?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80')",
-                        filter: 'sepia(15%)'
+                        backgroundImage: "url('https://images.unsplash.com/photo-1767617774446-5bb3ce40824d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODh8MHwxfHNlYXJjaHwxfHxtdXNsaW0lMjBmYW1pbHklMjBnYXRoZXJpbmd8ZW58MHx8fHwxNzcyNzk4MDc3fDA&ixlib=rb-4.1.0&q=85')",
+                        filter: 'sepia(10%)'
                       }}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-secondary/70 via-transparent to-primary/10" />
