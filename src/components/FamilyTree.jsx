@@ -123,8 +123,8 @@ const FamilyTree = memo(function FamilyTree({
   const snapToDevicePixel = useCallback((value) => {
     const dpr =
       typeof window !== "undefined" &&
-      Number.isFinite(window.devicePixelRatio) &&
-      window.devicePixelRatio > 0
+        Number.isFinite(window.devicePixelRatio) &&
+        window.devicePixelRatio > 0
         ? window.devicePixelRatio
         : 1;
     return Math.round(value * dpr) / dpr;
@@ -919,9 +919,22 @@ const FamilyTree = memo(function FamilyTree({
           // Direct horizontal line for spouses
           d = `M ${x1} ${y1} L ${x2} ${y2}`;
         } else {
-          // Orthogonal elbow routing for parent-child
-          const midY = (y1 + y2) / 2;
-          d = `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
+          // Orthogonal elbow routing replicating FamilyUnit layout
+          // The Y-coordinate needs to be pushed downwards to match ConnectorSVG midY.
+          // In ConnectorSVG, midY is LAYOUT.GEN_GAP/2 (which is 40).
+          // We calculate the Y difference and trace the pipe structure:
+
+          let yPoints = [];
+          if (y1 < y2) {
+            // To child: Go down from y1 out of card, turn sideways, go down into y2.
+            // We estimate the turning point based on the physical cards.
+            const turnY = y1 + (fromRect.height / 2) + 40; // 40px is exact midY in ConnectorSVG
+            d = `M ${x1} ${y1} L ${x1} ${turnY} L ${x2} ${turnY} L ${x2} ${y2}`;
+          } else {
+            // To parent: Go up from y1 out of card, turn sideways, go up into y2.
+            const turnY = y1 - (fromRect.height / 2) - 40; // Assuming symmetric
+            d = `M ${x1} ${y1} L ${x1} ${turnY} L ${x2} ${turnY} L ${x2} ${y2}`;
+          }
         }
 
         lines.push({
