@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import useWhatsAppStatus from "../hooks/useWhatsAppStatus";
 
 export default function WhatsAppSetup() {
     const [password, setPassword] = useState("");
@@ -12,6 +13,15 @@ export default function WhatsAppSetup() {
 
     const [phone, setPhone] = useState("");
     const [pairingCode, setPairingCode] = useState("");
+    const { is_connected, is_logged_in, loading: statusLoading, error: statusError } = useWhatsAppStatus(isAuthenticated ? password : null);
+
+    useEffect(() => {
+        if (!isAuthenticated) return;
+        if (is_logged_in) {
+            setSuccessMsg("WhatsApp sudah terhubung.");
+            setErrorMsg("");
+        }
+    }, [isAuthenticated, is_logged_in]);
 
     const handleLogin = (e) => {
         e.preventDefault();
@@ -26,6 +36,7 @@ export default function WhatsAppSetup() {
     const getQR = async () => {
         setLoading(true);
         setErrorMsg("");
+        setSuccessMsg("");
         setQrCodeData(null);
         setPairingCode("");
         try {
@@ -34,8 +45,16 @@ export default function WhatsAppSetup() {
             });
             if (!res.ok) throw new Error(await res.text());
             const data = await res.json();
-            if (data.code !== "SUCCESS") throw new Error(data.message || "Gagal mendapatkan QR Code");
-            setQrCodeData(data.results);
+            if (data.code !== "SUCCESS" && data.code !== "ALREADY_LOGGED_IN") {
+                throw new Error(data.message || "Gagal mendapatkan QR Code");
+            }
+            if (data.code === "ALREADY_LOGGED_IN") {
+                setSuccessMsg("WhatsApp sudah terhubung.");
+                setQrCodeData(null);
+                setPairingCode("");
+                return;
+            }
+            setQrCodeData(data.results || null);
         } catch (err) {
             setErrorMsg(err.message || "Terjadi kesalahan sistem");
             if (err.message.includes("invalid setup password")) {
@@ -133,13 +152,24 @@ export default function WhatsAppSetup() {
                 </div>
 
                 <p style={styles.subtext}>Hubungkan aplikasi ini dengan WhatsApp bot.</p>
+                <div style={{ ...styles.alert, backgroundColor: "#f5f5f5", color: "#555" }}>
+                    Status: {statusLoading ? "Memeriksa..." : is_logged_in ? "Terhubung" : is_connected ? "Connected, belum login" : "Terputus"}
+                </div>
+                {statusError && <div style={{ ...styles.alert, backgroundColor: "#ffebee", color: "#c62828" }}>{statusError}</div>}
 
                 {errorMsg && <div style={{ ...styles.alert, backgroundColor: "#ffebee", color: "#c62828" }}>{errorMsg}</div>}
                 {successMsg && <div style={{ ...styles.alert, backgroundColor: "#e8f5e9", color: "#2e7d32" }}>{successMsg}</div>}
+                {is_logged_in && (
+                    <div style={{ marginBottom: "20px", textAlign: "center" }}>
+                        <button onClick={() => window.location.replace("/")} style={{ ...styles.button, width: "100%" }}>
+                            Lanjut ke Aplikasi
+                        </button>
+                    </div>
+                )}
 
                 <div style={styles.actionSection}>
                     <h4 style={{ marginTop: 0 }}>Metode 1: Scan QR Code</h4>
-                    <button onClick={getQR} disabled={loading} style={styles.button}>
+                    <button onClick={getQR} disabled={loading || is_logged_in} style={styles.button}>
                         {loading && !qrCodeData && !pairingCode ? "Memuat..." : "Tampilkan QR Code"}
                     </button>
                     {qrCodeData && (
@@ -169,7 +199,7 @@ export default function WhatsAppSetup() {
                         placeholder="Contoh: 628123456789 (Tanpa +)"
                         style={styles.input}
                     />
-                    <button onClick={getCode} disabled={loading} style={styles.button}>
+                    <button onClick={getCode} disabled={loading || is_logged_in} style={styles.button}>
                         {loading && !qrCodeData && !pairingCode ? "Memuat..." : "Dapatkan Pairing Code"}
                     </button>
                     {pairingCode && (

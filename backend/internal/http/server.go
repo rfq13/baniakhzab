@@ -487,9 +487,11 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if payload.Event != "message" {
+		s.logger.Info("whatsapp webhook ignored event", "event", payload.Event)
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ignored"})
 		return
 	}
+	s.logger.Info("whatsapp webhook received message", "from", payload.Payload.From, "chat_id", payload.Payload.ChatID)
 
 	body := strings.TrimSpace(payload.Payload.Body)
 	bodyLower := strings.ToLower(body)
