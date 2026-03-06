@@ -851,12 +851,24 @@ const FamilyTree = memo(function FamilyTree({
         const fromRect = fromEl.getBoundingClientRect();
         const toRect = toEl.getBoundingClientRect();
 
+        const x1 = (fromRect.left + fromRect.width / 2 - rect.left) / zoom;
+        const y1 = (fromRect.top + fromRect.height / 2 - rect.top) / zoom;
+        const x2 = (toRect.left + toRect.width / 2 - rect.left) / zoom;
+        const y2 = (toRect.top + toRect.height / 2 - rect.top) / zoom;
+
+        let d = "";
+        if (step.kind === "spouse") {
+          // Direct horizontal line for spouses
+          d = `M ${x1} ${y1} L ${x2} ${y2}`;
+        } else {
+          // Orthogonal elbow routing for parent-child
+          const midY = (y1 + y2) / 2;
+          d = `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`;
+        }
+
         lines.push({
           key: `path-${step.fromId}-${step.toId}-${i}`,
-          x1: (fromRect.left + fromRect.width / 2 - rect.left) / zoom,
-          y1: (fromRect.top + fromRect.height / 2 - rect.top) / zoom,
-          x2: (toRect.left + toRect.width / 2 - rect.left) / zoom,
-          y2: (toRect.top + toRect.height / 2 - rect.top) / zoom,
+          d,
         });
       });
 
@@ -1253,17 +1265,14 @@ const FamilyTree = memo(function FamilyTree({
                 width: '100%',
                 height: '100%',
                 pointerEvents: 'none',
-                zIndex: 10,
               }}
               aria-hidden="true"
             >
               {pathLines.map((line) => (
-                <line
+                <path
                   key={line.key}
-                  x1={line.x1}
-                  y1={line.y1}
-                  x2={line.x2}
-                  y2={line.y2}
+                  d={line.d}
+                  fill="none"
                   className="path-highlight-line"
                 />
               ))}
