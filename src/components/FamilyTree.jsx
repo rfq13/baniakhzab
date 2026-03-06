@@ -111,8 +111,15 @@ const FamilyTree = memo(function FamilyTree({
 
   // Transform-based zoom and pan state
   const [transform, setTransform] = useState({ x: 0, y: 0, zoom: 0.5 });
+  const transformRef = useRef({ x: 0, y: 0, zoom: 0.5 });
   const targetTransformRef = useRef({ startX: 0, startY: 0, startZoom: 0.5, targetX: 0, targetY: 0, targetZoom: 0.5, lastTimestamp: 0 });
   const animationRef = useRef(null);
+  const initialFittedRef = useRef(false);
+
+  // Keep transformRef in sync with state
+  useEffect(() => {
+    transformRef.current = transform;
+  }, [transform]);
 
   // Pan state with momentum
   const panRef = useRef({
@@ -187,10 +194,11 @@ const FamilyTree = memo(function FamilyTree({
       cancelAnimationFrame(animationRef.current);
     }
 
+    const cur = transformRef.current;
     targetTransformRef.current = {
-      startX: transform.x,
-      startY: transform.y,
-      startZoom: transform.zoom,
+      startX: cur.x,
+      startY: cur.y,
+      startZoom: cur.zoom,
       targetX: newX,
       targetY: newY,
       targetZoom: newZoom,
@@ -198,7 +206,7 @@ const FamilyTree = memo(function FamilyTree({
     };
 
     animationRef.current = requestAnimationFrame(runAnimation);
-  }, [transform, runAnimation]);
+  }, [runAnimation]);
 
   const cancelAnimation = useCallback(() => {
     if (animationRef.current) {
@@ -219,17 +227,18 @@ const FamilyTree = memo(function FamilyTree({
     const cursorOffsetX = clientX - rect.left - containerCenterX;
     const cursorOffsetY = clientY - rect.top - containerCenterY;
 
-    const currentZoom = transform.zoom;
-    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom + deltaZoom));
+    const cur = transformRef.current;
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, cur.zoom + deltaZoom));
 
-    if (newZoom === currentZoom) return;
+    if (newZoom === cur.zoom) return;
 
-    const zoomFactor = newZoom / currentZoom;
-    const newX = cursorOffsetX - cursorOffsetX * zoomFactor;
-    const newY = cursorOffsetY - cursorOffsetY * zoomFactor;
+    const zoomFactor = newZoom / cur.zoom;
+    const newX = cur.x + cursorOffsetX - cursorOffsetX * zoomFactor;
+    const newY = cur.y + cursorOffsetY - cursorOffsetY * zoomFactor;
 
-    animateTransform(newX, newY, newZoom);
-  }, [transform, animateTransform]);
+    cancelAnimation();
+    setTransform({ x: newX, y: newY, zoom: newZoom });
+  }, [cancelAnimation]);
 
   // ===== Pan Handlers =====
   const handleMouseDown = useCallback((e) => {
@@ -336,8 +345,9 @@ const FamilyTree = memo(function FamilyTree({
     const containerCenterX = containerRect.width / 2;
     const containerCenterY = containerRect.height / 2;
 
-    const cardTreeX = (cardCenterX - transform.x) / transform.zoom;
-    const cardTreeY = (cardCenterY - transform.y) / transform.zoom;
+    const cur = transformRef.current;
+    const cardTreeX = (cardCenterX - cur.x) / cur.zoom;
+    const cardTreeY = (cardCenterY - cur.y) / cur.zoom;
 
     const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, FOCUS_ZOOM_LEVEL));
 
@@ -346,7 +356,7 @@ const FamilyTree = memo(function FamilyTree({
 
     cancelMomentum();
     animateTransform(newX, newY, newZoom);
-  }, [transform, animateTransform, cancelMomentum]);
+  }, [animateTransform, cancelMomentum]);
 
   // ===== Double-Click to Fit =====
   const handleDoubleClick = useCallback((e) => {
@@ -431,13 +441,15 @@ const FamilyTree = memo(function FamilyTree({
 
   // ===== Zoom Buttons =====
   const zoomIn = () => {
-    const newZoom = Math.min(MAX_ZOOM, Math.round((transform.zoom + ZOOM_STEP) * 100) / 100);
-    animateTransform(transform.x, transform.y, newZoom);
+    const cur = transformRef.current;
+    const newZoom = Math.min(MAX_ZOOM, Math.round((cur.zoom + ZOOM_STEP) * 100) / 100);
+    animateTransform(cur.x, cur.y, newZoom);
   };
 
   const zoomOut = () => {
-    const newZoom = Math.max(MIN_ZOOM, Math.round((transform.zoom - ZOOM_STEP) * 100) / 100);
-    animateTransform(transform.x, transform.y, newZoom);
+    const cur = transformRef.current;
+    const newZoom = Math.max(MIN_ZOOM, Math.round((cur.zoom - ZOOM_STEP) * 100) / 100);
+    animateTransform(cur.x, cur.y, newZoom);
   };
 
   const zoomReset = () => {
@@ -814,6 +826,45 @@ const FamilyTree = memo(function FamilyTree({
 
     return roots.map((r) => filterUnit(r)).filter(Boolean);
   }, [roots, graphVisibleIds]);
+
+  // ===== Initial Auto-Center =====
+  useEffect(() => {
+    if (initialFittedRef.current || !containerRef.current || !treeRef.current) return;
+
+    // We wait a bit to ensure the DOM has painted the tree fully so we can read its dimensions.
+    const timer = setTimeout(() => {
+      if (initialFittedRef.current || !containerRef.current || !treeRef.current) return;
+
+      const container = containerRef.current;
+      const tree = treeRef.current;
+
+      const containerW = container.clientWidth;
+      const containerH = container.clientHeight;
+      const treeW = tree.scrollWidth;
+      const treeH = tree.scrollHeight;
+
+      if (treeW === 0 || treeH === 0) return; // Not ready yet
+
+      // Calculate zoom to fit
+      const scaleW = containerW / treeW;
+      const scaleH = containerH / treeH;
+      const fitZoom = Math.min(1, scaleW, scaleH); // Max 1.0 (100%) zoom
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fitZoom));
+
+      // Calculate top-center position
+      // The transform Origin is 'center top', but tree starts at left:0, top:0.
+      // We want the horizontal center of the tree to be at horizontal center of container.
+      // Tree center in unscaled pixels is treeW/2.
+      // The point we want to map to container center is (treeW/2, 0)
+      const newX = (containerW / 2) - (treeW / 2) * newZoom;
+      const newY = 40; // a little top padding
+
+      initialFittedRef.current = true;
+      setTransform({ x: newX, y: newY, zoom: newZoom });
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [roots]);
 
   const describeStep = (step) => {
     if (!step.kind) return "Terhubung";

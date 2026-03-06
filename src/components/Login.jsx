@@ -23,7 +23,7 @@ export default function Login() {
                 .then(() => {
                     setStatus("berhasil");
                     // Hilangkan token dari URL dan reload halaman
-                    window.location.replace("/");
+                    window.location.replace("/tree");
                 })
                 .catch((err) => {
                     setErrorMsg(err.message);
@@ -71,7 +71,7 @@ export default function Login() {
                         <strong>Gagal: </strong> {errorMsg}
                         <div style={{ marginTop: "20px" }}>
                             <button
-                                onClick={() => window.location.replace("/")}
+                                onClick={() => window.location.replace("/tree")}
                                 style={styles.button}
                             >
                                 Kembali
