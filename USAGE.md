@@ -23,6 +23,8 @@ Catatan: file `cleaned_data_v3.json` berada di root proyek dan akan dibaca langs
 5. Hentikan stack:
    - `docker compose -f docker-compose.local.yml down`
 
+Catatan: endpoint setup WhatsApp akan mengembalikan `qr_link` yang sudah dinormalisasi backend agar aman dipakai browser (tidak bergantung hostname internal Docker).
+
 ## API Backend Utama
 
 - `GET /api/v1/tree`

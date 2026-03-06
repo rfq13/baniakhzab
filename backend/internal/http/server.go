@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -27,6 +29,7 @@ import (
 const (
 	accessTokenCookieName    = "baniakhzab_access_token"
 	ajnabiyyahCacheMaxSize   = 500
+	maxQRImageBytes          = 2 * 1024 * 1024
 	waConsumeRateLimit       = 10
 	waConsumeRateLimitWindow = time.Minute
 )
@@ -927,6 +930,11 @@ func (s *Server) handleWhatsAppSetupQR(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to get login qr from gowa")
 		return
 	}
+	if err := s.normalizeWhatsAppQRResult(r.Context(), res); err != nil {
+		s.logger.Error("normalize login qr failed", "error", err)
+		writeError(w, http.StatusBadGateway, "failed to prepare login qr image")
+		return
+	}
 
 	// Persist the device ID to the database
 	if deviceID := s.wa.GetDeviceID(); deviceID != "" {
@@ -985,6 +993,130 @@ func (s *Server) handleWhatsAppSetupLogout(w http.ResponseWriter, r *http.Reques
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (s *Server) normalizeWhatsAppQRResult(ctx context.Context, res map[string]any) error {
+	if res == nil {
+		return nil
+	}
+
+	resultsRaw, ok := res["results"]
+	if !ok || resultsRaw == nil {
+		return nil
+	}
+
+	results, ok := resultsRaw.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	qrLink, _ := results["qr_link"].(string)
+	qrLink = strings.TrimSpace(qrLink)
+	if qrLink == "" || strings.HasPrefix(strings.ToLower(qrLink), "data:") {
+		return nil
+	}
+
+	dataURL, err := s.fetchQRCodeAsDataURL(ctx, qrLink)
+	if err != nil {
+		return err
+	}
+	results["qr_link"] = dataURL
+	return nil
+}
+
+func (s *Server) fetchQRCodeAsDataURL(ctx context.Context, rawURL string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid qr_link URL")
+	}
+	if !strings.EqualFold(parsed.Scheme, "http") && !strings.EqualFold(parsed.Scheme, "https") {
+		return "", fmt.Errorf("unsupported qr_link scheme: %s", parsed.Scheme)
+	}
+
+	candidates := []string{parsed.String()}
+	if fallback := s.buildFallbackQRURL(parsed); fallback != "" && !strings.EqualFold(fallback, parsed.String()) {
+		candidates = append(candidates, fallback)
+	}
+
+	var (
+		body        []byte
+		contentType string
+		lastErr     error
+	)
+	for _, candidate := range candidates {
+		body, contentType, err = s.downloadQRImage(ctx, candidate)
+		if err == nil {
+			lastErr = nil
+			break
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return "", lastErr
+	}
+
+	encoded := base64.StdEncoding.EncodeToString(body)
+	return fmt.Sprintf("data:%s;base64,%s", contentType, encoded), nil
+}
+
+func (s *Server) buildFallbackQRURL(parsed *url.URL) string {
+	baseURL := strings.TrimSpace(s.cfg.WhatsApp.BaseURL)
+	if baseURL == "" || parsed == nil || parsed.Path == "" {
+		return ""
+	}
+
+	baseURL = strings.TrimRight(baseURL, "/")
+	pathPart := "/" + strings.TrimLeft(parsed.Path, "/")
+	fallback := baseURL + pathPart
+	if parsed.RawQuery != "" {
+		fallback += "?" + parsed.RawQuery
+	}
+	return fallback
+}
+
+func (s *Server) downloadQRImage(ctx context.Context, rawURL string) ([]byte, string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("build qr image request: %w", err)
+	}
+	if s.cfg.WhatsApp.BasicUser != "" || s.cfg.WhatsApp.BasicPass != "" {
+		req.SetBasicAuth(s.cfg.WhatsApp.BasicUser, s.cfg.WhatsApp.BasicPass)
+	}
+
+	client := &http.Client{Timeout: 20 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("download qr image failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, "", fmt.Errorf("download qr image failed with status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxQRImageBytes+1))
+	if err != nil {
+		return nil, "", fmt.Errorf("read qr image failed: %w", err)
+	}
+	if len(body) == 0 {
+		return nil, "", fmt.Errorf("qr image payload is empty")
+	}
+	if len(body) > maxQRImageBytes {
+		return nil, "", fmt.Errorf("qr image payload exceeds size limit")
+	}
+
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if idx := strings.Index(contentType, ";"); idx >= 0 {
+		contentType = strings.TrimSpace(contentType[:idx])
+	}
+	if contentType == "" {
+		contentType = http.DetectContentType(body)
+	}
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return nil, "", fmt.Errorf("unexpected qr image content type: %s", contentType)
+	}
+
+	return body, contentType, nil
 }
 
 func normalizeWANumber(jid string) string {

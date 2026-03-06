@@ -144,7 +144,15 @@ export default function WhatsAppSetup() {
                     </button>
                     {qrCodeData && (
                         <div style={styles.qrContainer}>
-                            <img src={qrCodeData.qr_link} alt="WhatsApp QR Code" style={{ maxWidth: "100%", borderRadius: "8px" }} />
+                            <img
+                                src={qrCodeData.qr_link}
+                                alt="WhatsApp QR Code"
+                                style={{ maxWidth: "100%", borderRadius: "8px" }}
+                                onError={() => {
+                                    setQrCodeData(null);
+                                    setErrorMsg('QR Code tidak dapat dimuat. Silakan klik "Tampilkan QR Code" lagi.');
+                                }}
+                            />
                             <p style={{ fontSize: "12px", color: "#666" }}>Berlaku {qrCodeData.qr_duration} detik</p>
                         </div>
                     )}

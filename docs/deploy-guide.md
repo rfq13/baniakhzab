@@ -52,6 +52,8 @@ LLM_API_KEY=your_openai_api_key
 LLM_MODEL=gpt-4.1-mini
 ```
 
+Catatan: `GOWA_BASE_URL` sengaja menggunakan host internal Docker (`http://gowa:3000`). Backend akan menormalisasi `qr_link` login WhatsApp agar tetap bisa dirender browser publik.
+
 ### Isi `GOWA_ENV_PRODUCTION` (Salin & Tempel ke Secret GitHub)
 Berikut adalah konfigurasi minimal yang diperlukan agar GoWA berjalan lancar dan terintegrasi dengan backend:
 ```ini
@@ -87,19 +89,38 @@ Aplikasi sekarang menggunakan alur **Fully Automated CI/CD**:
 
 ## 5. Konfigurasi Nginx & SSL (Production)
 
-File `nginx/default.conf` sudah dikonfigurasi untuk melayani frontend di `/` dan proxy backend di `/api/`.
+File `nginx/default.conf` di repo adalah konfigurasi Nginx **di dalam container frontend**.
+Untuk HTTPS production, gunakan Nginx + Certbot di **host server** sebagai reverse proxy ke container frontend.
 
-### Menambahkan HTTPS (Let's Encrypt)
-Sangat disarankan untuk menggunakan **Certbot** di host (Droplet) untuk mengamankan trafik:
-1. Instal Certbot: `sudo apt install certbot python3-certbot-nginx`
-2. Jalankan: `sudo certbot --nginx -d domainanda.com`
-3. Certbot akan otomatis mengubah konfigurasi Nginx di host untuk melakukan proxy ke container Docker yang berjalan di port 80.
+### Menambahkan HTTPS (Let's Encrypt + Cloudflare)
+1. Pastikan frontend container dipublish ke loopback host (contoh: `127.0.0.1:8081:80` di `docker-compose.prod.yml`).
+2. Instal Nginx + Certbot di host:
+   - `sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx`
+3. Buat server block host Nginx:
+   - `sudo nano /etc/nginx/sites-available/baniakhzab`
+   - Isi minimal:
+     - `server_name domainanda.com www.domainanda.com;`
+     - `location / { proxy_pass http://127.0.0.1:8081; }`
+4. Aktifkan site dan nonaktifkan default:
+   - `sudo ln -sf /etc/nginx/sites-available/baniakhzab /etc/nginx/sites-enabled/baniakhzab`
+   - `sudo rm -f /etc/nginx/sites-enabled/default`
+   - `sudo nginx -t && sudo systemctl reload nginx`
+5. Jika DNS memakai Cloudflare (proxy/orange-cloud), ubah record domain ke **DNS only** sementara saat issuance sertifikat.
+6. Generate sertifikat dan redirect HTTPS:
+   - `sudo certbot --nginx -d domainanda.com -d www.domainanda.com --redirect`
+7. Aktifkan auto-renew:
+   - `sudo systemctl enable --now certbot.timer`
+   - `sudo certbot renew --dry-run`
 
 ## 6. Monitoring & Troubleshooting
 
 - **Cek Status Container**: `docker compose -f docker-compose.prod.yml ps`
 - **Cek Log Backend**: `docker compose -f docker-compose.prod.yml logs -f backend`
 - **Restart Manual**: `docker compose -f docker-compose.prod.yml restart`
+- **Jika domain menampilkan default page Nginx**:
+  - Pastikan `sites-enabled/default` sudah dihapus.
+  - Pastikan `server_name` di site `baniakhzab` sesuai domain.
+  - Validasi konfigurasi aktif: `sudo nginx -T | grep -nE "server_name|proxy_pass|listen 443"`
 
 ## 7. Konfigurasi DNS & Cloudflare (Domain dari Provider Lokal)
 

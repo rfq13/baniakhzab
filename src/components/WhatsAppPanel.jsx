@@ -140,7 +140,16 @@ export default function WhatsAppPanel({ onClose }) {
                                     </button>
                                     {qrCodeData && (
                                         <div style={styles.qrContainer}>
-                                            <img src={qrCodeData.qr_link} alt="QR Code" style={{ maxWidth: "100%", borderRadius: "8px", opacity: qrCountdown <= 0 ? 0.3 : 1 }} />
+                                            <img
+                                                src={qrCodeData.qr_link}
+                                                alt="QR Code"
+                                                style={{ maxWidth: "100%", borderRadius: "8px", opacity: qrCountdown <= 0 ? 0.3 : 1 }}
+                                                onError={() => {
+                                                    setQrCodeData(null);
+                                                    setQrCountdown(0);
+                                                    setActionError('QR Code tidak dapat dimuat. Silakan klik "Tampilkan QR Code" lagi.');
+                                                }}
+                                            />
                                             {qrCountdown > 0 ? (
                                                 <p style={{ fontSize: "11px", color: "#666", fontWeight: "bold" }}>QR Code berlaku {qrCountdown} detik</p>
                                             ) : (
