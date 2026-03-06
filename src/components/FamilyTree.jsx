@@ -55,6 +55,7 @@ function buildConnectorGraph(segments) {
   const indexByKey = new Map();
   const adjacency = new Map();
   const seenEdges = new Set();
+  const connectionTolerance = 0.51;
 
   const ensureNode = (x, y) => {
     const sx = snapConnectorCoordinate(x);
@@ -68,20 +69,101 @@ function buildConnectorGraph(segments) {
     return idx;
   };
 
-  segments.forEach((segment) => {
-    const { x1, y1, x2, y2 } = segment;
-    if (![x1, y1, x2, y2].every(Number.isFinite)) return;
-    if (x1 === x2 && y1 === y2) return;
+  const isBetween = (value, a, b) =>
+    value >= Math.min(a, b) - connectionTolerance &&
+    value <= Math.max(a, b) + connectionTolerance;
 
-    const a = ensureNode(x1, y1);
-    const b = ensureNode(x2, y2);
+  const addEdge = (a, b) => {
+    if (a === b) return;
     const edgeKey = a < b ? `${a}:${b}` : `${b}:${a}`;
     if (seenEdges.has(edgeKey)) return;
     seenEdges.add(edgeKey);
-
     const weight = pointManhattanDistance(nodes[a], nodes[b]);
     adjacency.get(a).push({ to: b, weight });
     adjacency.get(b).push({ to: a, weight });
+  };
+
+  const normalizedSegments = segments
+    .map((segment) => {
+      const { x1, y1, x2, y2 } = segment;
+      if (![x1, y1, x2, y2].every(Number.isFinite)) return null;
+      const sx1 = snapConnectorCoordinate(x1);
+      const sy1 = snapConnectorCoordinate(y1);
+      const sx2 = snapConnectorCoordinate(x2);
+      const sy2 = snapConnectorCoordinate(y2);
+      if (sx1 === sx2 && sy1 === sy2) return null;
+      return { x1: sx1, y1: sy1, x2: sx2, y2: sy2 };
+    })
+    .filter(Boolean);
+
+  const splitPointMaps = normalizedSegments.map((segment) => {
+    const map = new Map();
+    const addPoint = (x, y) => {
+      const sx = snapConnectorCoordinate(x);
+      const sy = snapConnectorCoordinate(y);
+      map.set(`${sx}:${sy}`, { x: sx, y: sy });
+    };
+    addPoint(segment.x1, segment.y1);
+    addPoint(segment.x2, segment.y2);
+    return { map, addPoint };
+  });
+
+  for (let i = 0; i < normalizedSegments.length; i += 1) {
+    const a = normalizedSegments[i];
+    const aHorizontal = Math.abs(a.y1 - a.y2) <= connectionTolerance;
+    const aVertical = Math.abs(a.x1 - a.x2) <= connectionTolerance;
+    if (!aHorizontal && !aVertical) continue;
+
+    for (let j = i + 1; j < normalizedSegments.length; j += 1) {
+      const b = normalizedSegments[j];
+      const bHorizontal = Math.abs(b.y1 - b.y2) <= connectionTolerance;
+      const bVertical = Math.abs(b.x1 - b.x2) <= connectionTolerance;
+      if (!bHorizontal && !bVertical) continue;
+
+      if ((aHorizontal && bVertical) || (aVertical && bHorizontal)) {
+        const horizontal = aHorizontal ? a : b;
+        const vertical = aVertical ? a : b;
+        const intersectionX = vertical.x1;
+        const intersectionY = horizontal.y1;
+        if (
+          isBetween(intersectionX, horizontal.x1, horizontal.x2) &&
+          isBetween(intersectionY, vertical.y1, vertical.y2)
+        ) {
+          splitPointMaps[i].addPoint(intersectionX, intersectionY);
+          splitPointMaps[j].addPoint(intersectionX, intersectionY);
+        }
+      }
+    }
+  }
+
+  normalizedSegments.forEach((segment, segmentIndex) => {
+    const points = Array.from(splitPointMaps[segmentIndex].map.values());
+    if (points.length < 2) return;
+
+    const horizontal = Math.abs(segment.y1 - segment.y2) <= connectionTolerance;
+    const vertical = Math.abs(segment.x1 - segment.x2) <= connectionTolerance;
+    let ordered = points;
+
+    if (horizontal) {
+      ordered = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+    } else if (vertical) {
+      ordered = [...points].sort((a, b) => a.y - b.y || a.x - b.x);
+    } else {
+      ordered = [...points].sort(
+        (a, b) =>
+          pointDistance(a, { x: segment.x1, y: segment.y1 }) -
+          pointDistance(b, { x: segment.x1, y: segment.y1 }),
+      );
+    }
+
+    for (let i = 0; i < ordered.length - 1; i += 1) {
+      const from = ordered[i];
+      const to = ordered[i + 1];
+      if (from.x === to.x && from.y === to.y) continue;
+      const a = ensureNode(from.x, from.y);
+      const b = ensureNode(to.x, to.y);
+      addEdge(a, b);
+    }
   });
 
   return { nodes, adjacency };
@@ -146,6 +228,63 @@ function shortestPathInConnectorGraph(graph, startIndex, endIndex) {
   }
   route.reverse();
   return route;
+}
+
+function getCandidateNodeMatches(nodes, candidates, maxDistance) {
+  const matches = [];
+  const seen = new Set();
+  candidates.forEach((candidate) => {
+    const match = findNearestGraphNode(nodes, candidate, maxDistance);
+    if (!match) return;
+    const key = String(match.index);
+    if (seen.has(key)) return;
+    seen.add(key);
+    matches.push(match);
+  });
+  return matches;
+}
+
+function measureRouteLength(nodes, route) {
+  let length = 0;
+  for (let i = 0; i < route.length - 1; i += 1) {
+    const a = nodes[route[i]];
+    const b = nodes[route[i + 1]];
+    length += pointManhattanDistance(a, b);
+  }
+  return length;
+}
+
+function findBestConnectorRoute(graph, fromCandidates, toCandidates, maxDistance) {
+  const fromMatches = getCandidateNodeMatches(
+    graph.nodes,
+    fromCandidates,
+    maxDistance,
+  );
+  const toMatches = getCandidateNodeMatches(graph.nodes, toCandidates, maxDistance);
+
+  let best = null;
+  fromMatches.forEach((fromMatch) => {
+    toMatches.forEach((toMatch) => {
+      const route = shortestPathInConnectorGraph(
+        graph,
+        fromMatch.index,
+        toMatch.index,
+      );
+      if (!route || route.length === 0) return;
+      const routeLength = measureRouteLength(graph.nodes, route);
+      const score = routeLength + fromMatch.distance + toMatch.distance;
+      if (!best || score < best.score) {
+        best = {
+          score,
+          route,
+          fromMatch,
+          toMatch,
+        };
+      }
+    });
+  });
+
+  return best;
 }
 
 function buildFallbackRelationPath(step, startPoint, endPoint) {
@@ -381,6 +520,14 @@ const FamilyTree = memo(function FamilyTree({
     animationFrame: null,
   });
 
+  const touchStateRef = useRef({
+    isPanning: false,
+    isPinching: false,
+    lastX: 0,
+    lastY: 0,
+    lastPinchDistance: 0,
+  });
+
   const [exportSize, setExportSize] = useState("A3");
   const [exportError, setExportError] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -574,6 +721,136 @@ const FamilyTree = memo(function FamilyTree({
   const handleMouseLeave = useCallback(() => {
     handleMouseUp();
   }, [handleMouseUp]);
+
+  // ===== Touch Handlers =====
+  const handleTouchStart = useCallback((e) => {
+    // Only handled if touching the canvas, preventing interference with UI controls
+    if (e.target.closest('.ft-toolbar') || e.target.closest('.ft-relation-panel')) return;
+
+    cancelMomentum();
+    cancelAnimation();
+    const touches = e.touches;
+
+    if (touches.length === 1) {
+      // Pan
+      touchStateRef.current = {
+        isPanning: true,
+        isPinching: false,
+        lastX: touches[0].clientX,
+        lastY: touches[0].clientY,
+      };
+      panRef.current = {
+        active: true,
+        startX: touches[0].clientX,
+        startY: touches[0].clientY,
+        velocityX: 0,
+        velocityY: 0,
+        lastX: touches[0].clientX,
+        lastY: touches[0].clientY,
+        lastTimestamp: performance.now(),
+      };
+    } else if (touches.length === 2) {
+      // Pinch
+      touchStateRef.current.isPanning = false;
+      touchStateRef.current.isPinching = true;
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      touchStateRef.current.lastPinchDistance = Math.sqrt(dx * dx + dy * dy);
+      panRef.current.active = false;
+    }
+  }, [cancelAnimation, cancelMomentum]);
+
+  const handleTouchMove = useCallback((e) => {
+    const touches = e.touches;
+
+    if (touchStateRef.current.isPinching && touches.length === 2) {
+      e.preventDefault(); // Prevent native browser zooming/scrolling
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      const currentDistance = Math.sqrt(dx * dx + dy * dy);
+
+      const zoomRatio = currentDistance / touchStateRef.current.lastPinchDistance;
+      const cur = transformRef.current;
+      const newZoom = cur.zoom * zoomRatio;
+
+      touchStateRef.current.lastPinchDistance = currentDistance;
+
+      const midX = (touches[0].clientX + touches[1].clientX) / 2;
+      const midY = (touches[0].clientY + touches[1].clientY) / 2;
+
+      const container = containerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const cursorX = midX - rect.left;
+      const cursorY = midY - rect.top;
+
+      const treeX = (cursorX - cur.x) / cur.zoom;
+      const treeY = (cursorY - cur.y) / cur.zoom;
+
+      const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
+      const newX = cursorX - treeX * clampedZoom;
+      const newY = cursorY - treeY * clampedZoom;
+
+      commitTransform({ x: newX, y: newY, zoom: clampedZoom });
+    } else if (touchStateRef.current.isPanning && touches.length === 1) {
+      // Prevent native scroll only on touch pan to avoid pull-to-refresh
+      // Ensure we're not touching a scrollable panel
+      if (!e.target.closest('.modal-container') && !e.target.closest('.search-results')) {
+        e.preventDefault();
+      }
+
+      const deltaX = touches[0].clientX - touchStateRef.current.lastX;
+      const deltaY = touches[0].clientY - touchStateRef.current.lastY;
+
+      touchStateRef.current.lastX = touches[0].clientX;
+      touchStateRef.current.lastY = touches[0].clientY;
+
+      panRef.current.velocityX = deltaX;
+      panRef.current.velocityY = deltaY;
+      panRef.current.lastX = touches[0].clientX;
+      panRef.current.lastY = touches[0].clientY;
+
+      commitTransform(prev => ({
+        ...prev,
+        x: prev.x + deltaX,
+        y: prev.y + deltaY,
+      }));
+    }
+  }, [commitTransform]);
+
+  const handleTouchEnd = useCallback((e) => {
+    const touches = e.touches;
+    if (touches.length === 0) {
+      touchStateRef.current.isPanning = false;
+      touchStateRef.current.isPinching = false;
+
+      if (panRef.current.active) {
+        panRef.current.active = false;
+        momentumRef.current.velocityX = panRef.current.velocityX;
+        momentumRef.current.velocityY = panRef.current.velocityY;
+        momentumRef.current.active = true;
+        runMomentum();
+      }
+    } else if (touches.length === 1) {
+      touchStateRef.current = {
+        isPanning: true,
+        isPinching: false,
+        lastX: touches[0].clientX,
+        lastY: touches[0].clientY,
+      };
+      panRef.current = {
+        active: true,
+        startX: touches[0].clientX,
+        startY: touches[0].clientY,
+        velocityX: 0,
+        velocityY: 0,
+        lastX: touches[0].clientX,
+        lastY: touches[0].clientY,
+        lastTimestamp: performance.now(),
+      };
+    }
+  }, [runMomentum]);
 
   // ===== Focus on Node =====
   const focusOnNode = useCallback((nodeId) => {
@@ -1137,25 +1414,26 @@ const FamilyTree = memo(function FamilyTree({
           anchorCandidates.to,
           CONNECTOR_NEAREST_MAX_DISTANCE,
         );
+        const bestRoute = findBestConnectorRoute(
+          connectorGraph,
+          anchorCandidates.from,
+          anchorCandidates.to,
+          CONNECTOR_NEAREST_MAX_DISTANCE,
+        );
 
-        const fallbackStart = fromMatch?.point || anchorCandidates.from[0];
-        const fallbackEnd = toMatch?.point || anchorCandidates.to[0];
+        const fallbackStart =
+          bestRoute?.fromMatch?.point || fromMatch?.point || anchorCandidates.from[0];
+        const fallbackEnd =
+          bestRoute?.toMatch?.point || toMatch?.point || anchorCandidates.to[0];
 
         let d = "";
-        if (fromMatch && toMatch) {
-          const route = shortestPathInConnectorGraph(
-            connectorGraph,
-            fromMatch.index,
-            toMatch.index,
-          );
-          if (route && route.length > 0) {
-            d = route
-              .map((nodeIndex, pathIndex) => {
-                const p = connectorGraph.nodes[nodeIndex];
-                return `${pathIndex === 0 ? "M" : "L"} ${p.x} ${p.y}`;
-              })
-              .join(" ");
-          }
+        if (bestRoute?.route && bestRoute.route.length > 0) {
+          d = bestRoute.route
+            .map((nodeIndex, pathIndex) => {
+              const p = connectorGraph.nodes[nodeIndex];
+              return `${pathIndex === 0 ? "M" : "L"} ${p.x} ${p.y}`;
+            })
+            .join(" ");
         }
 
         if (!d) {
@@ -1527,6 +1805,10 @@ const FamilyTree = memo(function FamilyTree({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
         onDoubleClick={handleDoubleClick}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
       >
         <div
           ref={treeRef}
