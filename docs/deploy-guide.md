@@ -171,3 +171,8 @@ LLM_BASE_URL=https://llm.chutes.ai/v1
 LLM_API_KEY=cpk_5124d608e122482ab5e59e1ac097bb26.b392beeb15db5b269525c28f9c649c79.JFFHQ4o3RHDRsNxRmURNhn64AQ9mbrER
 LLM_MODEL=openai/gpt-oss-120b-TEE
 AUTH_FRONTEND_BASE_URL=https://baniakhzab.my.id/tree
+
+#GOWA_ENV_PRODUCTION
+WHATSAPP_WEBHOOK=http://backend:8080/api/v1/whatsapp/webhook
+APP_BASIC_AUTH=admin:admin
+

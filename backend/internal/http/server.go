@@ -48,7 +48,7 @@ type Server struct {
 	ajnabiyyahMaxSize int
 	ajnabiyyahCacheMu sync.RWMutex
 
-	corsAllowedOrigin   string
+	corsAllowedOrigin    string
 	waConsumeRateLimiter *rateLimiter
 
 	sseClients map[chan []byte]bool
@@ -135,21 +135,21 @@ func NewServer(cfg config.Config, store *db.Store, l logger) *Server {
 	}
 
 	return &Server{
-		cfg:                 cfg,
-		store:               store,
-		logger:              l,
-		wa:                  waClient,
-		jwt:                 jwtManager,
-		llm:                 llmClient,
-		oneTimeTTL:          time.Duration(ttl) * time.Minute,
-		ajnabiyyahCache:     make(map[string]*llm.AjnabiyyahResult),
-		ajnabiyyahOrder:     make([]string, 0, ajnabiyyahCacheMaxSize),
-		ajnabiyyahMaxSize:   ajnabiyyahCacheMaxSize,
-		ajnabiyyahCacheMu:   sync.RWMutex{},
-		corsAllowedOrigin:   frontendOrigin(cfg.Auth.FrontendBaseURL),
+		cfg:                  cfg,
+		store:                store,
+		logger:               l,
+		wa:                   waClient,
+		jwt:                  jwtManager,
+		llm:                  llmClient,
+		oneTimeTTL:           time.Duration(ttl) * time.Minute,
+		ajnabiyyahCache:      make(map[string]*llm.AjnabiyyahResult),
+		ajnabiyyahOrder:      make([]string, 0, ajnabiyyahCacheMaxSize),
+		ajnabiyyahMaxSize:    ajnabiyyahCacheMaxSize,
+		ajnabiyyahCacheMu:    sync.RWMutex{},
+		corsAllowedOrigin:    frontendOrigin(cfg.Auth.FrontendBaseURL),
 		waConsumeRateLimiter: newRateLimiter(waConsumeRateLimit, waConsumeRateLimitWindow),
-		sseClients:          make(map[chan []byte]bool),
-		sseMu:               sync.RWMutex{},
+		sseClients:           make(map[chan []byte]bool),
+		sseMu:                sync.RWMutex{},
 	}
 }
 
@@ -172,6 +172,8 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/whatsapp/messages/stream", s.handleWhatsAppMessagesStream)
 		r.Post("/whatsapp/messages/send", s.handleWhatsAppMessagesSend)
 
+		r.Get("/settings/landing", s.handleGetLandingSettings)
+
 		r.Group(func(r chi.Router) {
 			r.Use(s.authMiddleware)
 
@@ -184,6 +186,8 @@ func (s *Server) Routes() http.Handler {
 
 			r.Get("/tree", s.handleTree)
 			r.Post("/llm/ajnabiyyah", s.handleAjnabiyyah)
+
+			r.Put("/settings/landing", s.handleUpdateLandingSettings)
 		})
 	})
 
@@ -213,6 +217,52 @@ func (s *Server) handleAdminSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) handleGetLandingSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	whatsapp, err := s.store.Settings.Get(ctx, "landing_whatsapp")
+	if err != nil {
+		s.logger.Error("get landing_whatsapp setting failed", "error", err)
+	}
+	email, err := s.store.Settings.Get(ctx, "landing_email")
+	if err != nil {
+		s.logger.Error("get landing_email setting failed", "error", err)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{
+		"whatsapp": whatsapp,
+		"email":    email,
+	})
+}
+
+func (s *Server) handleUpdateLandingSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var input map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	if whatsapp, ok := input["whatsapp"]; ok {
+		if err := s.store.Settings.Set(ctx, "landing_whatsapp", whatsapp); err != nil {
+			s.logger.Error("set landing_whatsapp setting failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to update settings")
+			return
+		}
+	}
+
+	if email, ok := input["email"]; ok {
+		if err := s.store.Settings.Set(ctx, "landing_email", email); err != nil {
+			s.logger.Error("set landing_email setting failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "failed to update settings")
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleDevAuth(w http.ResponseWriter, r *http.Request) {
@@ -276,14 +326,14 @@ func (s *Server) handleListPersons(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleParentCouples(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	couples, err := s.store.Persons.GetParentCouples(ctx)
 	if err != nil {
 		s.logger.Error("list parent couples failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to list parent couples")
 		return
 	}
-	
+
 	writeJSON(w, http.StatusOK, couples)
 }
 

@@ -112,6 +112,30 @@ const AnimatedSection = ({ children, className = "", animation = "fade-in-up", d
 export default function Landing() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [contacts, setContacts] = useState({
+    whatsapp: "6281234567890", // default fallback
+    email: "halo@baniakhzab.com" // default fallback
+  });
+
+  useEffect(() => {
+    const fetchContacts = async () => {
+      try {
+        const response = await fetch('/api/v1/settings/landing');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.whatsapp || data.email) {
+            setContacts(prev => ({
+              whatsapp: data.whatsapp || prev.whatsapp,
+              email: data.email || prev.email
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch landing contacts:", err);
+      }
+    };
+    fetchContacts();
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -189,8 +213,8 @@ export default function Landing() {
       {/* ─── Header / Navbar ─── */}
       <header
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled
-            ? 'bg-background/95 backdrop-blur-xl shadow-lg shadow-primary/5 border-b border-border'
-            : 'bg-transparent'
+          ? 'bg-background/95 backdrop-blur-xl shadow-lg shadow-primary/5 border-b border-border'
+          : 'bg-transparent'
           }`}
         data-testid="header"
       >
@@ -369,7 +393,7 @@ export default function Landing() {
                     Lihat Silsilah
                   </a>
                   <a
-                    href="https://wa.me/6281234567890"
+                    href={`https://wa.me/${contacts.whatsapp}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-4 text-base rounded-lg border-2 border-border bg-background/60 text-secondary dark:text-foreground font-semibold hover:bg-accent transition-all duration-300 hover:scale-105"
@@ -664,8 +688,8 @@ export default function Landing() {
                   <AnimatedSection key={step.number} animation="fade-in-up" delay={index * 150}>
                     <div className="flex flex-col items-center text-center group">
                       <div className={`relative size-24 rounded-full flex items-center justify-center text-3xl font-bold mb-6 border-4 border-background shadow-xl transition-all duration-300 group-hover:scale-110 overflow-hidden ${step.active
-                          ? 'bg-gradient-to-br from-primary to-heritage-bronze text-primary-foreground shadow-primary/30 animate-pulse-glow'
-                          : 'bg-card text-primary shadow-primary/10 group-hover:bg-gradient-to-br group-hover:from-primary group-hover:to-heritage-bronze group-hover:text-primary-foreground'
+                        ? 'bg-gradient-to-br from-primary to-heritage-bronze text-primary-foreground shadow-primary/30 animate-pulse-glow'
+                        : 'bg-card text-primary shadow-primary/10 group-hover:bg-gradient-to-br group-hover:from-primary group-hover:to-heritage-bronze group-hover:text-primary-foreground'
                         }`}>
                         <div className="absolute inset-0 opacity-20">
                           <IslamicPattern className="w-full h-full" />
@@ -738,7 +762,7 @@ export default function Landing() {
                 Lihat Pohon Keluarga
               </a>
               <a
-                href="https://wa.me/6281234567890"
+                href={`https://wa.me/${contacts.whatsapp}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center justify-center px-10 py-4 text-lg rounded-xl border-2 border-heritage-cream/50 text-heritage-cream font-bold hover:bg-heritage-cream/10 transition-all duration-300"
@@ -831,15 +855,15 @@ export default function Landing() {
               </h4>
               <ul className="space-y-4">
                 <li>
-                  <a className="flex items-center gap-3 hover:text-primary transition-colors duration-200" href="mailto:halo@baniakhzab.com">
+                  <a className="flex items-center gap-3 hover:text-primary transition-colors duration-200" href={`mailto:${contacts.email}`}>
                     <Mail className="size-5 text-primary" />
-                    halo@baniakhzab.com
+                    {contacts.email}
                   </a>
                 </li>
                 <li>
-                  <a className="flex items-center gap-3 hover:text-primary transition-colors duration-200" href="https://wa.me/6281234567890" target="_blank" rel="noopener noreferrer">
+                  <a className="flex items-center gap-3 hover:text-primary transition-colors duration-200" href={`https://wa.me/${contacts.whatsapp}`} target="_blank" rel="noopener noreferrer">
                     <Phone className="size-5 text-primary" />
-                    +62 812 3456 7890
+                    +{contacts.whatsapp.startsWith('62') ? '62 ' + contacts.whatsapp.slice(2).replace(/(\d{3})(\d{4})(\d+)/, '$1 $2 $3') : contacts.whatsapp}
                   </a>
                 </li>
               </ul>
