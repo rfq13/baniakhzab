@@ -5,6 +5,7 @@ import AddPersonModal from "./components/AddPersonModal.jsx";
 import WhatsAppPanel from "./components/WhatsAppPanel.jsx";
 import WhatsAppSetup from "./components/WhatsAppSetup.jsx";
 import AdminSettingsModal from "./components/AdminSettingsModal.jsx";
+import EditPersonModal from "./components/EditPersonModal.jsx";
 import useOrgData from "./hooks/useOrgData.js";
 import { buildFamilyTree, normalizePersons } from "./utils/buildFamilyTree.js";
 
@@ -14,6 +15,10 @@ export default function App() {
   const [showWhatsAppPanel, setShowWhatsAppPanel] = useState(false);
   const [showAdminSettings, setShowAdminSettings] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditPersonModal, setShowEditPersonModal] = useState(false);
+  const [showControls, setShowControls] = useState(
+    typeof window !== "undefined" ? window.innerWidth > 640 : true
+  );
   const [selectedId, setSelectedId] = useState(() => {
     if (typeof window === "undefined") return null;
     const params = new URLSearchParams(window.location.search);
@@ -84,7 +89,16 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-header">
+      <div className="controls-toggle-container">
+        <button
+          className="btn-toggle-controls"
+          onClick={() => setShowControls(!showControls)}
+        >
+          {showControls ? "▼ Sembunyikan Filter & Menu" : "▲ Tampilkan Filter & Menu"}
+        </button>
+      </div>
+
+      <header className={`app-header ${showControls ? '' : 'collapsed-view'}`}>
         <div className="app-header-top">
           <div className="app-header-title">
             <h1>Silsilah Keturunan Bani Akhzab</h1>
@@ -160,8 +174,18 @@ export default function App() {
               highlightedIds={highlightedIds}
               onSelectPerson={setSelectedId}
               selectedId={selectedId}
+              showControls={showControls}
             />
           )}
+
+        {selectedId && (
+          <button
+            className="fab-edit-btn"
+            onClick={() => setShowEditPersonModal(true)}
+          >
+            ✏️ Edit Data
+          </button>
+        )}
 
         {showWhatsAppPanel && (
           <WhatsAppPanel onClose={() => setShowWhatsAppPanel(false)} />
@@ -169,6 +193,17 @@ export default function App() {
 
         {showAdminSettings && (
           <AdminSettingsModal onClose={() => setShowAdminSettings(false)} />
+        )}
+
+        {showEditPersonModal && selectedId && (
+          <EditPersonModal
+            personId={selectedId}
+            onClose={() => setShowEditPersonModal(false)}
+            onSuccess={() => {
+              setShowEditPersonModal(false);
+              refresh();
+            }}
+          />
         )}
       </main>
     </div>

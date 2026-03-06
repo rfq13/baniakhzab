@@ -47,3 +47,36 @@ export async function uploadPhoto(file) {
     reader.readAsDataURL(file);
   });
 }
+
+/**
+ * Update an existing person
+ */
+export async function updatePerson(id, data) {
+  const res = await fetch(`${API_BASE}/persons/${id}`, {
+    method: "PUT",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Gagal menyimpan perubahan anggota keluarga.");
+  }
+  return res.json();
+}
+
+/**
+ * Get person by id
+ */
+export async function getPerson(id) {
+  const res = await fetch(`${API_BASE}/persons/${id}`, {
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Gagal memuat data anggota keluarga.");
+  }
+  return res.json();
+}

@@ -20,6 +20,8 @@ const PAN_MOMENTUM_FRICTION = 0.92;
 const PAN_MOMENTUM_MIN_VELOCITY = 0.5;
 const FOCUS_ZOOM_LEVEL = 1.2;
 const TRANSFORM_IDLE_DELAY_MS = 140;
+const CONNECTOR_GRAPH_SNAP = 2; // 0.5px precision
+const CONNECTOR_NEAREST_MAX_DISTANCE = 120;
 
 function parseGenerationNumber(gen) {
   if (!gen) return null;
@@ -32,6 +34,191 @@ function downloadDataUrl(dataUrl, filename) {
   a.href = dataUrl;
   a.download = filename;
   a.click();
+}
+
+function snapConnectorCoordinate(value) {
+  return Math.round(value * CONNECTOR_GRAPH_SNAP) / CONNECTOR_GRAPH_SNAP;
+}
+
+function pointDistance(a, b) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function pointManhattanDistance(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function buildConnectorGraph(segments) {
+  const nodes = [];
+  const indexByKey = new Map();
+  const adjacency = new Map();
+  const seenEdges = new Set();
+
+  const ensureNode = (x, y) => {
+    const sx = snapConnectorCoordinate(x);
+    const sy = snapConnectorCoordinate(y);
+    const key = `${sx}:${sy}`;
+    if (indexByKey.has(key)) return indexByKey.get(key);
+    const idx = nodes.length;
+    nodes.push({ x: sx, y: sy });
+    indexByKey.set(key, idx);
+    adjacency.set(idx, []);
+    return idx;
+  };
+
+  segments.forEach((segment) => {
+    const { x1, y1, x2, y2 } = segment;
+    if (![x1, y1, x2, y2].every(Number.isFinite)) return;
+    if (x1 === x2 && y1 === y2) return;
+
+    const a = ensureNode(x1, y1);
+    const b = ensureNode(x2, y2);
+    const edgeKey = a < b ? `${a}:${b}` : `${b}:${a}`;
+    if (seenEdges.has(edgeKey)) return;
+    seenEdges.add(edgeKey);
+
+    const weight = pointManhattanDistance(nodes[a], nodes[b]);
+    adjacency.get(a).push({ to: b, weight });
+    adjacency.get(b).push({ to: a, weight });
+  });
+
+  return { nodes, adjacency };
+}
+
+function findNearestGraphNode(nodes, candidate, maxDistance) {
+  let best = null;
+  nodes.forEach((node, idx) => {
+    const dist = pointDistance(node, candidate);
+    if (dist > maxDistance) return;
+    if (!best || dist < best.distance) {
+      best = { index: idx, distance: dist, point: node };
+    }
+  });
+  return best;
+}
+
+function findNearestGraphNodeForCandidates(nodes, candidates, maxDistance) {
+  for (let i = 0; i < candidates.length; i += 1) {
+    const match = findNearestGraphNode(nodes, candidates[i], maxDistance);
+    if (match) return match;
+  }
+  return null;
+}
+
+function shortestPathInConnectorGraph(graph, startIndex, endIndex) {
+  if (startIndex === endIndex) return [startIndex];
+
+  const { adjacency } = graph;
+  const visited = new Set();
+  const distances = new Map([[startIndex, 0]]);
+  const previous = new Map();
+  const queue = [{ index: startIndex, distance: 0 }];
+
+  while (queue.length > 0) {
+    queue.sort((a, b) => a.distance - b.distance);
+    const current = queue.shift();
+    if (!current || visited.has(current.index)) continue;
+    visited.add(current.index);
+    if (current.index === endIndex) break;
+
+    const neighbors = adjacency.get(current.index) || [];
+    neighbors.forEach((neighbor) => {
+      if (visited.has(neighbor.to)) return;
+      const nextDistance = current.distance + (Number.isFinite(neighbor.weight) ? neighbor.weight : 1);
+      const knownDistance = distances.get(neighbor.to);
+      if (knownDistance === undefined || nextDistance < knownDistance) {
+        distances.set(neighbor.to, nextDistance);
+        previous.set(neighbor.to, current.index);
+        queue.push({ index: neighbor.to, distance: nextDistance });
+      }
+    });
+  }
+
+  if (!previous.has(endIndex)) return null;
+  const route = [endIndex];
+  let cursor = endIndex;
+  while (cursor !== startIndex) {
+    cursor = previous.get(cursor);
+    if (cursor === undefined) return null;
+    route.push(cursor);
+  }
+  route.reverse();
+  return route;
+}
+
+function buildFallbackRelationPath(step, startPoint, endPoint) {
+  if (step.kind === "spouse") {
+    return `M ${startPoint.x} ${startPoint.y} L ${endPoint.x} ${endPoint.y}`;
+  }
+  const turnY = (startPoint.y + endPoint.y) / 2;
+  return `M ${startPoint.x} ${startPoint.y} L ${startPoint.x} ${turnY} L ${endPoint.x} ${turnY} L ${endPoint.x} ${endPoint.y}`;
+}
+
+function getNodeBoxInTreeSpace(el, treeRect, zoom) {
+  const rect = el.getBoundingClientRect();
+  const left = (rect.left - treeRect.left) / zoom;
+  const top = (rect.top - treeRect.top) / zoom;
+  const width = rect.width / zoom;
+  const height = rect.height / zoom;
+  return {
+    left,
+    top,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
+    centerX: left + width / 2,
+    centerY: top + height / 2,
+  };
+}
+
+function getRelationAnchorCandidates(step, fromBox, toBox) {
+  const fromCenter = { x: fromBox.centerX, y: fromBox.centerY };
+  const toCenter = { x: toBox.centerX, y: toBox.centerY };
+  const defaultFrom = [
+    fromCenter,
+    { x: fromBox.centerX, y: fromBox.bottom },
+    { x: fromBox.centerX, y: fromBox.top },
+    { x: fromBox.right, y: fromBox.centerY },
+    { x: fromBox.left, y: fromBox.centerY },
+  ];
+  const defaultTo = [
+    toCenter,
+    { x: toBox.centerX, y: toBox.top },
+    { x: toBox.centerX, y: toBox.bottom },
+    { x: toBox.left, y: toBox.centerY },
+    { x: toBox.right, y: toBox.centerY },
+  ];
+
+  if (step.kind === "spouse") {
+    const fromIsLeft = fromBox.centerX <= toBox.centerX;
+    return {
+      from: fromIsLeft
+        ? [{ x: fromBox.right, y: fromBox.centerY }, ...defaultFrom]
+        : [{ x: fromBox.left, y: fromBox.centerY }, ...defaultFrom],
+      to: fromIsLeft
+        ? [{ x: toBox.left, y: toBox.centerY }, ...defaultTo]
+        : [{ x: toBox.right, y: toBox.centerY }, ...defaultTo],
+    };
+  }
+
+  if (step.kind === "parent" && step.dir === "to_child") {
+    return {
+      from: [{ x: fromBox.centerX, y: fromBox.bottom }, ...defaultFrom],
+      to: [{ x: toBox.centerX, y: toBox.top }, ...defaultTo],
+    };
+  }
+
+  if (step.kind === "parent" && step.dir === "to_parent") {
+    return {
+      from: [{ x: fromBox.centerX, y: fromBox.top }, ...defaultFrom],
+      to: [{ x: toBox.centerX, y: toBox.bottom }, ...defaultTo],
+    };
+  }
+
+  return { from: defaultFrom, to: defaultTo };
 }
 
 const DIRECTION_OPTIONS = [
@@ -107,6 +294,7 @@ const FamilyTree = memo(function FamilyTree({
   highlightedIds,
   onSelectPerson,
   selectedId,
+  showControls = true,
 }) {
   const containerRef = useRef(null);
   const treeRef = useRef(null);
@@ -895,46 +1083,83 @@ const FamilyTree = memo(function FamilyTree({
     }
 
     const update = () => {
-      const rect = treeEl.getBoundingClientRect();
-      const zoom = transformRef.current.zoom;
+      const treeRect = treeEl.getBoundingClientRect();
+      const zoom = transformRef.current.zoom || 1;
+      const shortestPath = relationResult.paths[0]; // highlight shortest path only
+      if (!shortestPath || !shortestPath.steps || shortestPath.steps.length === 0) {
+        setPathLines([]);
+        return;
+      }
+
+      const connectorSegments = [];
+      const connectorLineElements = treeEl.querySelectorAll(".fu-wrapper svg line");
+      connectorLineElements.forEach((lineEl) => {
+        const svgEl = lineEl.ownerSVGElement;
+        if (!svgEl) return;
+
+        const x1 = Number(lineEl.getAttribute("x1"));
+        const y1 = Number(lineEl.getAttribute("y1"));
+        const x2 = Number(lineEl.getAttribute("x2"));
+        const y2 = Number(lineEl.getAttribute("y2"));
+        if (![x1, y1, x2, y2].every(Number.isFinite)) return;
+
+        const svgRect = svgEl.getBoundingClientRect();
+        const svgOffsetX = (svgRect.left - treeRect.left) / zoom;
+        const svgOffsetY = (svgRect.top - treeRect.top) / zoom;
+
+        connectorSegments.push({
+          x1: svgOffsetX + x1,
+          y1: svgOffsetY + y1,
+          x2: svgOffsetX + x2,
+          y2: svgOffsetY + y2,
+        });
+      });
+
+      const connectorGraph = buildConnectorGraph(connectorSegments);
       const lines = [];
-      const shortestPath = relationResult.paths[0]; // Highlight only the shortest path
 
       shortestPath.steps.forEach((step, i) => {
         const fromEl = treeEl.querySelector(`[data-person-id="${step.fromId}"]`);
         const toEl = treeEl.querySelector(`[data-person-id="${step.toId}"]`);
-
         if (!fromEl || !toEl) return;
 
-        const fromRect = fromEl.getBoundingClientRect();
-        const toRect = toEl.getBoundingClientRect();
+        const fromBox = getNodeBoxInTreeSpace(fromEl, treeRect, zoom);
+        const toBox = getNodeBoxInTreeSpace(toEl, treeRect, zoom);
+        const anchorCandidates = getRelationAnchorCandidates(step, fromBox, toBox);
 
-        const x1 = (fromRect.left + fromRect.width / 2 - rect.left) / zoom;
-        const y1 = (fromRect.top + fromRect.height / 2 - rect.top) / zoom;
-        const x2 = (toRect.left + toRect.width / 2 - rect.left) / zoom;
-        const y2 = (toRect.top + toRect.height / 2 - rect.top) / zoom;
+        const fromMatch = findNearestGraphNodeForCandidates(
+          connectorGraph.nodes,
+          anchorCandidates.from,
+          CONNECTOR_NEAREST_MAX_DISTANCE,
+        );
+        const toMatch = findNearestGraphNodeForCandidates(
+          connectorGraph.nodes,
+          anchorCandidates.to,
+          CONNECTOR_NEAREST_MAX_DISTANCE,
+        );
+
+        const fallbackStart = fromMatch?.point || anchorCandidates.from[0];
+        const fallbackEnd = toMatch?.point || anchorCandidates.to[0];
 
         let d = "";
-        if (step.kind === "spouse") {
-          // Direct horizontal line for spouses
-          d = `M ${x1} ${y1} L ${x2} ${y2}`;
-        } else {
-          // Orthogonal elbow routing replicating FamilyUnit layout
-          // The Y-coordinate needs to be pushed downwards to match ConnectorSVG midY.
-          // In ConnectorSVG, midY is LAYOUT.GEN_GAP/2 (which is 40).
-          // We calculate the Y difference and trace the pipe structure:
-
-          let yPoints = [];
-          if (y1 < y2) {
-            // To child: Go down from y1 out of card, turn sideways, go down into y2.
-            // We estimate the turning point based on the physical cards.
-            const turnY = y1 + (fromRect.height / 2) + 40; // 40px is exact midY in ConnectorSVG
-            d = `M ${x1} ${y1} L ${x1} ${turnY} L ${x2} ${turnY} L ${x2} ${y2}`;
-          } else {
-            // To parent: Go up from y1 out of card, turn sideways, go up into y2.
-            const turnY = y1 - (fromRect.height / 2) - 40; // Assuming symmetric
-            d = `M ${x1} ${y1} L ${x1} ${turnY} L ${x2} ${turnY} L ${x2} ${y2}`;
+        if (fromMatch && toMatch) {
+          const route = shortestPathInConnectorGraph(
+            connectorGraph,
+            fromMatch.index,
+            toMatch.index,
+          );
+          if (route && route.length > 0) {
+            d = route
+              .map((nodeIndex, pathIndex) => {
+                const p = connectorGraph.nodes[nodeIndex];
+                return `${pathIndex === 0 ? "M" : "L"} ${p.x} ${p.y}`;
+              })
+              .join(" ");
           }
+        }
+
+        if (!d) {
+          d = buildFallbackRelationPath(step, fallbackStart, fallbackEnd);
         }
 
         lines.push({
@@ -946,14 +1171,18 @@ const FamilyTree = memo(function FamilyTree({
       setPathLines(lines);
     };
 
-    const timer = setTimeout(update, 50);
+    let rafId = null;
+    const timer = setTimeout(() => {
+      rafId = requestAnimationFrame(update);
+    }, 50);
     const onResize = () => update();
     window.addEventListener("resize", onResize);
     return () => {
       clearTimeout(timer);
+      if (rafId) cancelAnimationFrame(rafId);
       window.removeEventListener("resize", onResize);
     };
-  }, [relationResult]);
+  }, [relationResult, filteredRoots]);
 
   // ===== Initial Auto-Center =====
   useEffect(() => {
@@ -1030,255 +1259,264 @@ const FamilyTree = memo(function FamilyTree({
   return (
     <div className="ft-shell">
       {/* Toolbar */}
-      <div className="ft-toolbar">
-        <div className="chart-toolbar-group">
-          <button
-            type="button"
-            className="ft-zoom-btn"
-            onClick={zoomOut}
-            title="Zoom out"
-          >
-            −
-          </button>
-          <span className="ft-zoom-label">{Math.round(transform.zoom * 100)}%</span>
-          <button
-            type="button"
-            className="ft-zoom-btn"
-            onClick={zoomIn}
-            title="Zoom in"
-          >
-            +
-          </button>
-          <button
-            type="button"
-            className="ft-zoom-btn"
-            onClick={zoomReset}
-            title="Reset zoom"
-          >
-            ⊙
-          </button>
-        </div>
-        <div className="chart-toolbar-group">
-          <label className="chart-toolbar-label" htmlFor="ft-export-size">
-            Ukuran cetak
-          </label>
-          <SearchableSelect
-            id="ft-export-size"
-            value={exportSize}
-            onChange={(val) => setExportSize(val)}
-            options={EXPORT_SIZE_OPTIONS}
-            placeholder="Pilih ukuran"
-          />
-          <button
-            type="button"
-            className="chart-toolbar-button"
-            onClick={() => handleExport("png")}
-            disabled={exporting}
-          >
-            {exporting ? "Mengekspor…" : "Export PNG"}
-          </button>
-          <button
-            type="button"
-            className="chart-toolbar-button secondary"
-            onClick={() => handleExport("svg")}
-            disabled={exporting}
-          >
-            Export SVG
-          </button>
-        </div>
-        {filterContext && (
+      {showControls && (
+        <div className="ft-toolbar">
           <div className="chart-toolbar-group">
-            <label className="chart-toolbar-label" htmlFor="ft-filter-pair">
-              Pasangan
-            </label>
-            <SearchableSelect
-              id="ft-filter-pair"
-              value={pairKey}
-              onChange={(val) => setPairKey(val)}
-              options={pairOptions}
-              placeholder="Semua pasangan"
-            />
-            <label
-              className="chart-toolbar-label"
-              htmlFor="ft-filter-direction"
+            <button
+              type="button"
+              className="ft-zoom-btn"
+              onClick={zoomOut}
+              title="Perkecil"
             >
-              Arah
-            </label>
-            <SearchableSelect
-              id="ft-filter-direction"
-              value={direction}
-              onChange={(val) => setDirection(val)}
-              options={DIRECTION_OPTIONS}
-              placeholder="Pilih arah"
-            />
-            <label
-              className="chart-toolbar-label"
-              htmlFor="ft-filter-generation"
+              −
+            </button>
+            <span className="ft-zoom-label">{Math.round(transform.zoom * 100)}%</span>
+            <button
+              type="button"
+              className="ft-zoom-btn"
+              onClick={zoomIn}
+              title="Perbesar"
             >
-              Generasi
-            </label>
-            <SearchableSelect
-              id="ft-filter-generation"
-              value={generationFilter}
-              onChange={(val) => setGenerationFilter(val)}
-              options={generationSelectOptions}
-              placeholder="Semua generasi"
-            />
+              +
+            </button>
+            <button
+              type="button"
+              className="ft-zoom-btn"
+              onClick={zoomReset}
+              title="Reset zoom"
+            >
+              ⊙
+            </button>
           </div>
-        )}
-        <div className="chart-toolbar-group">
-          <span className="chart-toolbar-label">{filterStatusLabel}</span>
-          {(pairKey || generationFilter !== "all") && (
+          <div className="chart-toolbar-group">
+            <label className="chart-toolbar-label" htmlFor="ft-export-size">
+              Ukuran cetak
+            </label>
+            <SearchableSelect
+              id="ft-export-size"
+              value={exportSize}
+              onChange={(val) => setExportSize(val)}
+              options={EXPORT_SIZE_OPTIONS}
+              placeholder="Pilih ukuran"
+            />
+            <button
+              type="button"
+              className="chart-toolbar-button"
+              onClick={() => handleExport("png")}
+              disabled={exporting}
+            >
+              {exporting ? "Mengekspor…" : "Export PNG"}
+            </button>
             <button
               type="button"
               className="chart-toolbar-button secondary"
-              onClick={() => {
-                setPairKey("");
-                setGenerationFilter("all");
-                setDirection("both");
-              }}
+              onClick={() => handleExport("svg")}
+              disabled={exporting}
             >
-              Reset filter
+              Export SVG
             </button>
-          )}
-          {exportError && (
-            <span className="chart-toolbar-error">{exportError}</span>
-          )}
-        </div>
-      </div>
-
-      <div className="ft-relation-panel" ref={relationRef}>
-        <div className="ft-relation-header">
-          <span className="chart-toolbar-label">
-            Jalur hubungan antara dua entitas
-          </span>
-        </div>
-        <div className="ft-relation-form">
-          <div className="ft-relation-field">
-            <label className="chart-toolbar-label" htmlFor="ft-relation-a">
-              Entitas A
-            </label>
-            <SearchableSelect
-              id="ft-relation-a"
-              value={relationAId}
-              onChange={(val) => setRelationAId(val)}
-              options={[
-                { value: "", label: "Pilih entitas…" },
-                ...personOptions.map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                })),
-              ]}
-              placeholder="Pilih entitas…"
-            />
           </div>
-          <div className="ft-relation-field">
-            <label className="chart-toolbar-label" htmlFor="ft-relation-b">
-              Entitas B
-            </label>
-            <SearchableSelect
-              id="ft-relation-b"
-              value={relationBId}
-              onChange={(val) => setRelationBId(val)}
-              options={[
-                { value: "", label: "Pilih entitas…" },
-                ...personOptions.map((p) => ({
-                  value: p.id,
-                  label: p.name,
-                })),
-              ]}
-              placeholder="Pilih entitas…"
-            />
-          </div>
-          <div className="ft-relation-field ft-relation-filters">
-            <span className="chart-toolbar-label">Jenis hubungan</span>
-            <label className="ft-relation-checkbox">
-              <input
-                type="checkbox"
-                checked={relationKinds.parent}
-                onChange={(e) =>
-                  setRelationKinds((prev) => ({
-                    ...prev,
-                    parent: e.target.checked,
-                  }))
-                }
+          {filterContext && (
+            <div className="chart-toolbar-group">
+              <label className="chart-toolbar-label" htmlFor="ft-filter-pair">
+                Pasangan
+              </label>
+              <SearchableSelect
+                id="ft-filter-pair"
+                value={pairKey}
+                onChange={(val) => setPairKey(val)}
+                options={pairOptions}
+                placeholder="Semua pasangan"
               />
-              <span>Orang tua/anak</span>
-            </label>
-            <label className="ft-relation-checkbox">
-              <input
-                type="checkbox"
-                checked={relationKinds.spouse}
-                onChange={(e) =>
-                  setRelationKinds((prev) => ({
-                    ...prev,
-                    spouse: e.target.checked,
-                  }))
-                }
+              <label
+                className="chart-toolbar-label"
+                htmlFor="ft-filter-direction"
+              >
+                Arah
+              </label>
+              <SearchableSelect
+                id="ft-filter-direction"
+                value={direction}
+                onChange={(val) => setDirection(val)}
+                options={DIRECTION_OPTIONS}
+                placeholder="Pilih arah"
               />
-              <span>Pasangan</span>
-            </label>
-            {(relationAId || relationBId) && (
+              <label
+                className="chart-toolbar-label"
+                htmlFor="ft-filter-generation"
+              >
+                Generasi
+              </label>
+              <SearchableSelect
+                id="ft-filter-generation"
+                value={generationFilter}
+                onChange={(val) => setGenerationFilter(val)}
+                options={generationSelectOptions}
+                placeholder="Semua generasi"
+              />
+            </div>
+          )}
+          <div className="chart-toolbar-group">
+            <span className="chart-toolbar-label">{filterStatusLabel}</span>
+            {(pairKey || generationFilter !== "all") && (
               <button
                 type="button"
                 className="chart-toolbar-button secondary"
-                style={{ marginLeft: "auto" }}
                 onClick={() => {
-                  setRelationAId("");
-                  setRelationBId("");
+                  setPairKey("");
+                  setGenerationFilter("all");
+                  setDirection("both");
                 }}
               >
-                Clear
+                Reset filter
               </button>
+            )}
+            {exportError && (
+              <span className="chart-toolbar-error">{exportError}</span>
             )}
           </div>
         </div>
-        <div className="ft-relation-body">
-          {!relationAId || !relationBId ? (
-            <div className="ft-relation-empty">
-              Pilih dua entitas untuk melihat jalur hubungan.
+      )}
+
+      {/* Relation panel */}
+      {showControls && (
+        <div
+          ref={relationRef}
+          className="ft-relation-panel"
+          style={{ width: "fit-content" }}
+        >
+          <div className="ft-relation-header">
+            <span className="chart-toolbar-label">
+              Jalur hubungan antara dua entitas
+            </span>
+          </div>
+          <div className="ft-relation-form">
+            <div className="ft-relation-field">
+              <label className="chart-toolbar-label" htmlFor="ft-relation-a">
+                Entitas A
+              </label>
+              <SearchableSelect
+                id="ft-relation-a"
+                value={relationAId}
+                onChange={(val) => setRelationAId(val)}
+                options={[
+                  { value: "", label: "Pilih entitas…" },
+                  ...personOptions.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                  })),
+                ]}
+                placeholder="Pilih entitas…"
+              />
             </div>
-          ) : !relationResult.paths || relationResult.paths.length === 0 ? (
-            <div className="ft-relation-empty">
-              Tidak ada jalur hubungan yang ditemukan dengan filter saat ini.
+            <div className="ft-relation-field">
+              <label className="chart-toolbar-label" htmlFor="ft-relation-b">
+                Entitas B
+              </label>
+              <SearchableSelect
+                id="ft-relation-b"
+                value={relationBId}
+                onChange={(val) => setRelationBId(val)}
+                options={[
+                  { value: "", label: "Pilih entitas…" },
+                  ...personOptions.map((p) => ({
+                    value: p.id,
+                    label: p.name,
+                  })),
+                ]}
+                placeholder="Pilih entitas…"
+              />
             </div>
-          ) : (
-            <div className="ft-relation-paths">
-              <div className="ft-relation-summary">
-                {relationResult.paths.length} jalur ditemukan · jarak terpendek{" "}
-                {relationResult.shortestLength} langkah
+            <div className="ft-relation-field ft-relation-filters">
+              <span className="chart-toolbar-label">Jenis hubungan</span>
+              <label className="ft-relation-checkbox">
+                <input
+                  type="checkbox"
+                  checked={relationKinds.parent}
+                  onChange={(e) =>
+                    setRelationKinds((prev) => ({
+                      ...prev,
+                      parent: e.target.checked,
+                    }))
+                  }
+                />
+                <span>Orang tua/anak</span>
+              </label>
+              <label className="ft-relation-checkbox">
+                <input
+                  type="checkbox"
+                  checked={relationKinds.spouse}
+                  onChange={(e) =>
+                    setRelationKinds((prev) => ({
+                      ...prev,
+                      spouse: e.target.checked,
+                    }))
+                  }
+                />
+                <span>Pasangan</span>
+              </label>
+              {(relationAId || relationBId) && (
+                <button
+                  type="button"
+                  className="chart-toolbar-button secondary"
+                  style={{ marginLeft: "auto" }}
+                  onClick={() => {
+                    setRelationAId("");
+                    setRelationBId("");
+                  }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="ft-relation-body">
+            {!relationAId || !relationBId ? (
+              <div className="ft-relation-empty">
+                Pilih dua entitas untuk melihat jalur hubungan.
               </div>
-              {relationResult.paths.map((p, idx) => (
-                <div key={p.nodes.join("->")} className="ft-relation-path">
-                  <div className="ft-relation-path-header">
-                    <span>
-                      Jalur {idx + 1} · {p.length} langkah
-                    </span>
-                    {idx === 0 && (
-                      <span className="ft-relation-badge">Terpendek</span>
-                    )}
-                  </div>
-                  <div className="ft-relation-path-line">
-                    <div className="ft-relation-node">
-                      {getPersonName(p.nodes[0])}
-                    </div>
-                    {p.steps.map((step, i) => (
-                      <React.Fragment key={`${step.fromId}-${step.toId}-${i}`}>
-                        <div className="ft-relation-edge">
-                          {describeStep(step)}
-                        </div>
-                        <div className="ft-relation-node">
-                          {getPersonName(step.toId)}
-                        </div>
-                      </React.Fragment>
-                    ))}
-                  </div>
+            ) : !relationResult.paths || relationResult.paths.length === 0 ? (
+              <div className="ft-relation-empty">
+                Tidak ada jalur hubungan yang ditemukan dengan filter saat ini.
+              </div>
+            ) : (
+              <div className="ft-relation-paths">
+                <div className="ft-relation-summary">
+                  {relationResult.paths.length} jalur ditemukan · jarak terpendek{" "}
+                  {relationResult.shortestLength} langkah
                 </div>
-              ))}
-            </div>
-          )}
+                {relationResult.paths.map((p, idx) => (
+                  <div key={p.nodes.join("->")} className="ft-relation-path">
+                    <div className="ft-relation-path-header">
+                      <span>
+                        Jalur {idx + 1} · {p.length} langkah
+                      </span>
+                      {idx === 0 && (
+                        <span className="ft-relation-badge">Terpendek</span>
+                      )}
+                    </div>
+                    <div className="ft-relation-path-line">
+                      <div className="ft-relation-node">
+                        {getPersonName(p.nodes[0])}
+                      </div>
+                      {p.steps.map((step, i) => (
+                        <React.Fragment key={`${step.fromId}-${step.toId}-${i}`}>
+                          <div className="ft-relation-edge">
+                            {describeStep(step)}
+                          </div>
+                          <div className="ft-relation-node">
+                            {getPersonName(step.toId)}
+                          </div>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Canvas */}
       <div
