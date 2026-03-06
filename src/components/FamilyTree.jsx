@@ -13,11 +13,13 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
 const ZOOM_STEP = 0.25;
 const WHEEL_ZOOM_SENSITIVITY = 0.0015;
+const ZOOM_PRECISION = 2;
 const SMOOTH_ZOOM_DURATION = 200;
 const SMOOTH_PAN_DURATION = 300;
 const PAN_MOMENTUM_FRICTION = 0.92;
 const PAN_MOMENTUM_MIN_VELOCITY = 0.5;
 const FOCUS_ZOOM_LEVEL = 1.2;
+const TRANSFORM_IDLE_DELAY_MS = 140;
 
 function parseGenerationNumber(gen) {
   if (!gen) return null;
@@ -114,12 +116,63 @@ const FamilyTree = memo(function FamilyTree({
   const transformRef = useRef({ x: 0, y: 0, zoom: 0.5 });
   const targetTransformRef = useRef({ startX: 0, startY: 0, startZoom: 0.5, targetX: 0, targetY: 0, targetZoom: 0.5, startTimestamp: 0 });
   const animationRef = useRef(null);
+  const transformIdleTimerRef = useRef(null);
   const initialFittedRef = useRef(false);
+  const [isTransforming, setIsTransforming] = useState(false);
+
+  const snapToDevicePixel = useCallback((value) => {
+    const dpr =
+      typeof window !== "undefined" &&
+      Number.isFinite(window.devicePixelRatio) &&
+      window.devicePixelRatio > 0
+        ? window.devicePixelRatio
+        : 1;
+    return Math.round(value * dpr) / dpr;
+  }, []);
+
+  const normalizeTransform = useCallback((next) => {
+    if (!next) return transformRef.current;
+    const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next.zoom));
+    const roundedZoom = Number(clampedZoom.toFixed(ZOOM_PRECISION));
+    return {
+      x: snapToDevicePixel(next.x),
+      y: snapToDevicePixel(next.y),
+      zoom: roundedZoom,
+    };
+  }, [snapToDevicePixel]);
+
+  const scheduleTransformIdle = useCallback(() => {
+    if (transformIdleTimerRef.current) {
+      clearTimeout(transformIdleTimerRef.current);
+    }
+    transformIdleTimerRef.current = setTimeout(() => {
+      setIsTransforming(false);
+      transformIdleTimerRef.current = null;
+    }, TRANSFORM_IDLE_DELAY_MS);
+  }, []);
+
+  const commitTransform = useCallback((nextOrUpdater) => {
+    setIsTransforming(true);
+    setTransform((prev) => {
+      const next =
+        typeof nextOrUpdater === "function"
+          ? nextOrUpdater(prev)
+          : nextOrUpdater;
+      return normalizeTransform(next);
+    });
+    scheduleTransformIdle();
+  }, [normalizeTransform, scheduleTransformIdle]);
 
   // Keep transformRef in sync with state
   useEffect(() => {
     transformRef.current = transform;
   }, [transform]);
+
+  useEffect(() => () => {
+    if (transformIdleTimerRef.current) {
+      clearTimeout(transformIdleTimerRef.current);
+    }
+  }, []);
 
   // Pan state with momentum
   const panRef = useRef({
@@ -182,12 +235,12 @@ const FamilyTree = memo(function FamilyTree({
     const newY = lerp(targetTransformRef.current.startY, targetTransformRef.current.targetY, easedProgress);
     const newZoom = lerp(targetTransformRef.current.startZoom, targetTransformRef.current.targetZoom, easedProgress);
 
-    setTransform({ x: newX, y: newY, zoom: newZoom });
+    commitTransform({ x: newX, y: newY, zoom: newZoom });
 
     if (progress < 1) {
       animationRef.current = requestAnimationFrame(runAnimation);
     }
-  }, [lerp, easeOutCubic]);
+  }, [lerp, easeOutCubic, commitTransform]);
 
   const animateTransform = useCallback((newX, newY, newZoom) => {
     if (animationRef.current) {
@@ -195,18 +248,23 @@ const FamilyTree = memo(function FamilyTree({
     }
 
     const cur = transformRef.current;
+    const normalizedTarget = normalizeTransform({
+      x: newX,
+      y: newY,
+      zoom: newZoom,
+    });
     targetTransformRef.current = {
       startX: cur.x,
       startY: cur.y,
       startZoom: cur.zoom,
-      targetX: newX,
-      targetY: newY,
-      targetZoom: newZoom,
+      targetX: normalizedTarget.x,
+      targetY: normalizedTarget.y,
+      targetZoom: normalizedTarget.zoom,
       startTimestamp: performance.now(),
     };
 
     animationRef.current = requestAnimationFrame(runAnimation);
-  }, [runAnimation]);
+  }, [runAnimation, normalizeTransform]);
 
   const cancelAnimation = useCallback(() => {
     if (animationRef.current) {
@@ -236,8 +294,8 @@ const FamilyTree = memo(function FamilyTree({
     const newY = cursorY - treeY * newZoom;
 
     cancelAnimation();
-    setTransform({ x: newX, y: newY, zoom: newZoom });
-  }, [cancelAnimation]);
+    commitTransform({ x: newX, y: newY, zoom: newZoom });
+  }, [cancelAnimation, commitTransform]);
 
   // ===== Pan Handlers =====
   const handleMouseDown = useCallback((e) => {
@@ -272,12 +330,12 @@ const FamilyTree = memo(function FamilyTree({
     panRef.current.lastX = e.clientX;
     panRef.current.lastY = e.clientY;
 
-    setTransform(prev => ({
+    commitTransform(prev => ({
       ...prev,
       x: prev.x + deltaX,
       y: prev.y + deltaY,
     }));
-  }, []);
+  }, [commitTransform]);
 
   // ===== Momentum Animation =====
   const cancelMomentum = useCallback(() => {
@@ -302,14 +360,14 @@ const FamilyTree = memo(function FamilyTree({
       return;
     }
 
-    setTransform(prev => ({
+    commitTransform(prev => ({
       ...prev,
       x: prev.x + momentumRef.current.velocityX,
       y: prev.y + momentumRef.current.velocityY,
     }));
 
     momentumRef.current.animationFrame = requestAnimationFrame(runMomentum);
-  }, [cancelMomentum]);
+  }, [cancelMomentum, commitTransform]);
 
   const handleMouseUp = useCallback(() => {
     if (!panRef.current.active) return;
@@ -397,7 +455,7 @@ const FamilyTree = memo(function FamilyTree({
           e.preventDefault();
           cancelMomentum();
           cancelAnimation();
-          setTransform(prev => ({
+          commitTransform(prev => ({
             ...prev,
             x: prev.x - e.deltaX,
             y: prev.y - e.deltaY,
@@ -409,7 +467,7 @@ const FamilyTree = memo(function FamilyTree({
           e.stopPropagation();
           cancelMomentum();
           cancelAnimation();
-          setTransform(prev => ({
+          commitTransform(prev => ({
             ...prev,
             x: prev.x - e.deltaX,
             y: prev.y - e.deltaY,
@@ -436,7 +494,7 @@ const FamilyTree = memo(function FamilyTree({
       el.removeEventListener("wheel", onWheel);
       if (wheelTimeout) cancelAnimationFrame(wheelTimeout);
     };
-  }, [zoomAtPoint, cancelMomentum, cancelAnimation]);
+  }, [zoomAtPoint, cancelMomentum, cancelAnimation, commitTransform]);
 
   // ===== Zoom Buttons =====
   const zoomIn = () => {
@@ -920,7 +978,7 @@ const FamilyTree = memo(function FamilyTree({
       const newY = 40; // a little top padding
 
       initialFittedRef.current = true;
-      setTransform({ x: newX, y: newY, zoom: newZoom });
+      commitTransform({ x: newX, y: newY, zoom: newZoom });
     };
 
     // Delay checking slightly to ensure React has attached refs
@@ -930,7 +988,7 @@ const FamilyTree = memo(function FamilyTree({
       clearTimeout(timer);
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [filteredRoots]);
+  }, [filteredRoots, commitTransform]);
 
   const describeStep = (step) => {
     if (!step.kind) return "Terhubung";
@@ -1225,7 +1283,7 @@ const FamilyTree = memo(function FamilyTree({
           style={{
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
             transformOrigin: 'top left',
-            willChange: 'transform',
+            willChange: isTransforming ? 'transform' : 'auto',
           }}
         >
           {dualLines.length > 0 && (
@@ -1239,6 +1297,7 @@ const FamilyTree = memo(function FamilyTree({
                 height: '100%',
                 pointerEvents: 'none',
               }}
+              shapeRendering="crispEdges"
               aria-hidden="true"
             >
               {dualLines.map((line) => (
@@ -1266,6 +1325,7 @@ const FamilyTree = memo(function FamilyTree({
                 height: '100%',
                 pointerEvents: 'none',
               }}
+              shapeRendering="geometricPrecision"
               aria-hidden="true"
             >
               {pathLines.map((line) => (

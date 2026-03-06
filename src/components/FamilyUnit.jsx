@@ -107,6 +107,7 @@ const ConnectorSVG = memo(function ConnectorSVG({ unit, totalW }) {
       width={totalW}
       height={svgH}
       style={{ display: "block", overflow: "visible", flexShrink: 0 }}
+      shapeRendering="crispEdges"
       aria-hidden="true"
     >
       {paths}
@@ -123,6 +124,7 @@ const MarriageBarSVG = memo(function MarriageBarSVG({ hasChildren }) {
       width={w}
       height={LAYOUT.CARD_H}
       style={{ flexShrink: 0, display: "block" }}
+      shapeRendering="crispEdges"
       aria-hidden="true"
     >
       <line x1={0} y1={cy} x2={w} y2={cy} stroke="#94a3b8" strokeWidth={2} />
@@ -153,6 +155,7 @@ const SingleStemSVG = memo(function SingleStemSVG({ totalW }) {
         flexShrink: 0,
         marginTop: `-${Math.round(LAYOUT.CARD_H / 2)}px`,
       }}
+      shapeRendering="crispEdges"
       aria-hidden="true"
     >
       <line
@@ -251,6 +254,7 @@ const PolygamyConnectorSVG = memo(function PolygamyConnectorSVG({
       width={totalW}
       height={svgH}
       style={{ display: "block", overflow: "visible", flexShrink: 0 }}
+      shapeRendering="crispEdges"
       aria-hidden="true"
     >
       {paths}
@@ -265,6 +269,7 @@ const StubIndicatorSVG = memo(function StubIndicatorSVG() {
       width={20}
       height={16}
       style={{ display: "block", flexShrink: 0 }}
+      shapeRendering="crispEdges"
       aria-hidden="true"
     >
       <line
