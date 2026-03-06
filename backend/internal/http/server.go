@@ -616,7 +616,7 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "invalid configuration"})
 			return
 		}
-		loginURL.Path = "/login"
+		loginURL.Path = "tree"
 		q := loginURL.Query()
 		q.Set("token", token)
 		loginURL.RawQuery = q.Encode()

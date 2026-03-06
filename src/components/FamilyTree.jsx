@@ -221,20 +221,19 @@ const FamilyTree = memo(function FamilyTree({
     if (!container) return;
 
     const rect = container.getBoundingClientRect();
-    const containerCenterX = rect.width / 2;
-    const containerCenterY = rect.height / 2;
-
-    const cursorOffsetX = clientX - rect.left - containerCenterX;
-    const cursorOffsetY = clientY - rect.top - containerCenterY;
+    const cursorX = clientX - rect.left;
+    const cursorY = clientY - rect.top;
 
     const cur = transformRef.current;
     const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, cur.zoom + deltaZoom));
 
     if (newZoom === cur.zoom) return;
 
-    const zoomFactor = newZoom / cur.zoom;
-    const newX = cur.x + cursorOffsetX - cursorOffsetX * zoomFactor;
-    const newY = cur.y + cursorOffsetY - cursorOffsetY * zoomFactor;
+    // Keep the same tree point under the cursor while zooming.
+    const treeX = (cursorX - cur.x) / cur.zoom;
+    const treeY = (cursorY - cur.y) / cur.zoom;
+    const newX = cursorX - treeX * newZoom;
+    const newY = cursorY - treeY * newZoom;
 
     cancelAnimation();
     setTransform({ x: newX, y: newY, zoom: newZoom });
@@ -532,7 +531,7 @@ const FamilyTree = memo(function FamilyTree({
       const savedTransformOrigin = treeEl.style.transformOrigin;
       try {
         treeEl.style.transform = "none";
-        treeEl.style.transformOrigin = "center top";
+        treeEl.style.transformOrigin = "top left";
 
         await new Promise((r) => requestAnimationFrame(r));
         await new Promise((r) => requestAnimationFrame(r));
@@ -851,11 +850,7 @@ const FamilyTree = memo(function FamilyTree({
       const fitZoom = Math.min(1, scaleW, scaleH); // Max 1.0 (100%) zoom
       const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fitZoom));
 
-      // Calculate top-center position
-      // The transform Origin is 'center top', but tree starts at left:0, top:0.
-      // We want the horizontal center of the tree to be at horizontal center of container.
-      // Tree center in unscaled pixels is treeW/2.
-      // The point we want to map to container center is (treeW/2, 0)
+      // Calculate top-center position with top-left transform origin.
       const newX = (containerW / 2) - (treeW / 2) * newZoom;
       const newY = 40; // a little top padding
 
@@ -1145,7 +1140,7 @@ const FamilyTree = memo(function FamilyTree({
           className="ft-tree"
           style={{
             transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
-            transformOrigin: 'center top',
+            transformOrigin: 'top left',
             willChange: 'transform',
           }}
         >
