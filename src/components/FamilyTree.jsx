@@ -828,10 +828,11 @@ const FamilyTree = memo(function FamilyTree({
 
   // ===== Initial Auto-Center =====
   useEffect(() => {
-    if (initialFittedRef.current || !containerRef.current || !treeRef.current) return;
+    if (initialFittedRef.current || !filteredRoots || filteredRoots.length === 0) return;
 
-    // We wait a bit to ensure the DOM has painted the tree fully so we can read its dimensions.
-    const timer = setTimeout(() => {
+    let rafId = null;
+
+    const checkAndFit = () => {
       if (initialFittedRef.current || !containerRef.current || !treeRef.current) return;
 
       const container = containerRef.current;
@@ -842,7 +843,13 @@ const FamilyTree = memo(function FamilyTree({
       const treeW = tree.scrollWidth;
       const treeH = tree.scrollHeight;
 
-      if (treeW === 0 || treeH === 0) return; // Not ready yet
+      if (treeW === 0 || treeH === 0) {
+        // In JSDOM (testing), dimensions are always 0. Don't loop forever.
+        if (typeof process !== "undefined" && process.env?.NODE_ENV === "test") return;
+        // Not ready yet, check again next frame
+        rafId = requestAnimationFrame(checkAndFit);
+        return;
+      }
 
       // Calculate zoom to fit
       const scaleW = containerW / treeW;
@@ -856,10 +863,16 @@ const FamilyTree = memo(function FamilyTree({
 
       initialFittedRef.current = true;
       setTransform({ x: newX, y: newY, zoom: newZoom });
-    }, 100);
+    };
 
-    return () => clearTimeout(timer);
-  }, [roots]);
+    // Delay checking slightly to ensure React has attached refs
+    const timer = setTimeout(checkAndFit, 50);
+
+    return () => {
+      clearTimeout(timer);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [filteredRoots]);
 
   const describeStep = (step) => {
     if (!step.kind) return "Terhubung";
