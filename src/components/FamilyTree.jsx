@@ -772,11 +772,8 @@ const FamilyTree = memo(function FamilyTree({
   }, [highlightedIds, relationHighlightIds]);
 
   const graphVisibleIds = React.useMemo(() => {
-    if (relationHighlightIds && relationAId && relationBId) {
-      return relationHighlightIds;
-    }
     return visibleIds;
-  }, [relationHighlightIds, relationAId, relationBId, visibleIds]);
+  }, [visibleIds]);
 
   const filteredRoots = React.useMemo(() => {
     if (!roots) return [];
@@ -1138,6 +1135,19 @@ const FamilyTree = memo(function FamilyTree({
               />
               <span>Pasangan</span>
             </label>
+            {(relationAId || relationBId) && (
+              <button
+                type="button"
+                className="chart-toolbar-button secondary"
+                style={{ marginLeft: "auto" }}
+                onClick={() => {
+                  setRelationAId("");
+                  setRelationBId("");
+                }}
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
         <div className="ft-relation-body">
