@@ -104,7 +104,7 @@ export default function WhatsAppSetup() {
             <div style={styles.container}>
                 <div style={styles.card}>
                     <h2 style={{ marginTop: 0, color: "#333" }}>Pengaturan WhatsApp</h2>
-                    <p style={styles.subtext}>Masukkan password setup (bawaan: admin)</p>
+                    <p style={styles.subtext}>Masukkan password setup WhatsApp.</p>
                     <form onSubmit={handleLogin}>
                         <input
                             type="password"

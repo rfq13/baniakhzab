@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "dev:backend": "cd backend && go run ./cmd/api",
+    "dev:backend": "cd backend && air",
     "seed": "cd backend && go run ./cmd/seed -file ../with-gender.json",
     "check": "cd backend && go run ./cmd/check -file ../with-gender.json",
     "dev:all": "node dev-all.mjs",
@@ -22,6 +22,7 @@
     "dagre": "^0.8.5",
     "fs-extra": "^11.3.3",
     "html-to-image": "^1.11.11",
+    "lucide-react": "^0.577.0",
     "minimist": "^1.2.8",
     "playwright": "^1.58.2",
     "react": "^18.3.1",

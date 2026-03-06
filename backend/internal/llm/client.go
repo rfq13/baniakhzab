@@ -251,10 +251,6 @@ func (c *Client) GenerateDatabaseSQL(ctx context.Context, naturalLanguage string
 }
 
 func (c *Client) CheckRelationship(ctx context.Context, store *db.Store, personAID, personBID string) (*RelationshipResult, error) {
-	if c.apiKey == "" {
-		return nil, fmt.Errorf("LLM_API_KEY is not configured")
-	}
-
 	personA, err := store.Persons.GetByID(ctx, personAID)
 	if err != nil {
 		return nil, fmt.Errorf("person A not found: %w", err)
@@ -264,53 +260,30 @@ func (c *Client) CheckRelationship(ctx context.Context, store *db.Store, personA
 		return nil, fmt.Errorf("person B not found: %w", err)
 	}
 
-	payload := map[string]any{
-		"person_a": personA,
-		"person_b": personB,
-	}
-	data, err := json.Marshal(payload)
+	persons, err := store.Persons.List(ctx, 1000, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to list persons: %w", err)
 	}
 
-	systemPrompt := "Kamu adalah asisten kekerabatan untuk keluarga besar Bani Akhzab. " +
-		"Tugasmu menjelaskan hubungan kekerabatan antara dua orang (misalnya: kakak, adik, paman, bibi, sepupu, keponakan, mertua, ipar, dan seterusnya). " +
-		"Gunakan data struktur keluarga yang diberikan. " +
-		"Jawab dalam bahasa Indonesia yang ringkas. " +
-		"Respon SELALU dalam format JSON: {\"label\": \"<hubungan singkat>\", \"explanation\": \"<penjelasan singkat>\"}."
-
-	userContent := "Berikut data dua orang dari pohon silsilah dalam format JSON:\n" +
-		string(data) +
-		"\nJelaskan hubungan kekerabatan mereka."
-
-	messages := []chatMessage{
-		{Role: "system", Content: systemPrompt},
-		{Role: "user", Content: userContent},
-	}
-
-	resp, err := c.callChat(ctx, chatRequest{
-		Model:    c.model,
-		Messages: messages,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("llm returned no choices")
-	}
-
-	raw := strings.TrimSpace(resp.Choices[0].Message.Content)
-
-	var out RelationshipResult
-	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+	graph := db.BuildFamilyGraph(ctx, persons)
+	paths, _ := graph.FindShortestPaths(personA.ID, personB.ID, true, true, 16)
+	if len(paths) == 0 {
 		return &RelationshipResult{
 			Label:       "",
-			Explanation: "",
-			Raw:         raw,
+			Explanation: "Tidak ada jalur hubungan yang ditemukan di dalam data silsilah.",
+			Raw:         "",
 		}, nil
 	}
-	out.Raw = raw
-	return &out, nil
+
+	path := paths[0]
+	label := PathToLabel(path, personB.Gender)
+	explanation := fmt.Sprintf("Jalur terpendek memiliki %d langkah.", path.Length)
+
+	return &RelationshipResult{
+		Label:       label,
+		Explanation: explanation,
+		Raw:         "",
+	}, nil
 }
 
 func (c *Client) callChat(ctx context.Context, body chatRequest) (*chatResponse, error) {
@@ -373,20 +346,28 @@ func (c *Client) ChatWithAgent(ctx context.Context, store *db.Store, user *db.Pe
 	agentTools := []tools.Tool{
 		NewSearchPersonTool(store),
 		NewGetPersonFamilyTool(store),
+		NewGetFilteredRelativesTool(store),
 		NewCheckRelationshipTool(c, store),
 		NewAskDatabaseTool(c, store),
+		NewUpdatePersonWANumberTool(store),
 	}
 
 	agent := agents.NewOpenAIFunctionsAgent(llm, agentTools)
 	executor := agents.NewExecutor(
 		agent,
-		agents.WithMaxIterations(5),
+		agents.WithMaxIterations(10),
 	)
 
 	systemPrompt := fmt.Sprintf(`[INSTRUKSI SISTEM: Kamu adalah asisten silsilah keluarga Bani Akhzab (Chatbot Nasab) di WhatsApp.
 Kamu sedang berbicara dengan: %s (ID: %s).
 Selalu gunakan bahasa Indonesia yang sopan, ramah, dan ringkas. Jangan membuat asumsi, gunakan tool jika tidak tahu.
-Jika user bertanya tentang keluarganya, gunakan ID user ini (%s) untuk mencari ke tool.]
+Jika user bertanya tentang keluarganya, gunakan ID user ini (%s) untuk mencari ke tool.
+Kamu dapat mengupdate nomor WhatsApp anggota keluarga menggunakan tool UpdatePersonWANumber HANYA jika diminta secara eksplisit oleh user yang terdaftar.
+
+FORMAT WHATSAPP:
+- *Teks Tebal* untuk nama orang atau poin penting.
+- _Teks Miring_ untuk istilah asing atau penekanan.
+- Gunakan bullet points (-) untuk daftar.]
 
 Pertanyaan User: %s`, user.FullName, user.ID, user.ID, query)
 
@@ -403,4 +384,136 @@ Pertanyaan User: %s`, user.FullName, user.ID, user.ID, query)
 	}
 
 	return out, nil
+}
+
+// runComplexQuery handles multi-hop, chained, and filtered genealogy queries via an agentic loop.
+// It passes full context: user identity, conversation history, and enriched state (with person names).
+func (c *Client) runComplexQuery(ctx context.Context, store *db.Store, user *db.Person, history []db.ChatMessage, stateSummary string, query string) (string, error) {
+	if c.apiKey == "" {
+		return "", fmt.Errorf("LLM_API_KEY is not configured")
+	}
+
+	llmClient, err := openai.New(
+		openai.WithBaseURL(c.baseURL),
+		openai.WithToken(c.apiKey),
+		openai.WithModel(c.model),
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to initialize langchaingo openai client: %v", err)
+	}
+
+	agentTools := []tools.Tool{
+		NewSearchPersonTool(store),
+		NewGetPersonFamilyTool(store),
+		NewGetFilteredRelativesTool(store),
+		NewCheckRelationshipTool(c, store),
+		NewAskDatabaseTool(c, store),
+		NewUpdateConversationFocusTool(store, user.WANumber),
+		NewUpdatePersonWANumberTool(store),
+	}
+
+	agent := agents.NewOpenAIFunctionsAgent(llmClient, agentTools)
+	executor := agents.NewExecutor(
+		agent,
+		agents.WithMaxIterations(15),
+	)
+
+	// Build compact history for context (last 6 messages)
+	historyLines := buildAgentHistorySummary(history, 6)
+
+	systemPrompt := fmt.Sprintf(`[INSTRUKSI SISTEM: CHATBOT NASAB BANI AKHZAB]
+Kamu adalah asisten ahli silsilah keluarga Bani Akhzab yang cerdas, ramah, dan berbudaya.
+Tugas utama: Menjawab pertanyaan silsilah, melacak hubungan keluarga, dan memberikan saran sapaan yang tepat.
+
+USER SAAT INI:
+- Nama: %s
+- ID: %s
+
+KONTEKS PERCAKAPAN:
+%s
+
+STATE (FOKUS SAAT INI):
+%s
+
+PANDUAN PENALARAN (CHAIN-OF-THOUGHT):
+1. DEKOMPOSISI: Jika pertanyaan melibatkan hubungan berlapis (misal: "sepupu ayah"), pecah menjadi langkah-langkah pencarian (Cari Ayah -> Cari Saudara Ayah -> Cari Anak mereka).
+2. KONTEKS: Gunakan ID user (%s) sebagai titik awal jika user bertanya tentang dirinya sendiri ("siapa ayah saya?", "paman saya", dll).
+3. EKSEKUSI TOOL: Gunakan tool secara berurutan. Jika butuh ID seseorang, gunakan 'SearchPerson' atau 'GetFilteredRelatives' terlebih dahulu.
+4. UPDATE DATA: Kamu dapat memperbarui nomor WhatsApp anggota keluarga menggunakan tool 'UpdatePersonWANumber'. Lakukan HANYA jika diminta secara eksplisit. Pastikan kamu telah mengidentifikasi ID orang yang benar sebelum mengupdate (gunakan SearchPerson/GetFilteredRelatives jika perlu).
+5. UPDATE STATE: Gunakan 'UpdateConversationFocus' di akhir penalaran untuk mencatat orang yang menjadi topik utama pembicaraan, agar kamu tahu siapa "dia" di pertanyaan selanjutnya. Cukup panggil tool ini satu kali saja untuk orang yang paling relevan di akhir jawabanmu.
+6. ANALISIS SAPAAN & ISTILAH (KULTUR JAWA):
+   Gunakan istilah sapaan yang tepat berdasarkan posisi di silsilah:
+   - KE ATAS (Munggah): 
+     * Orang tua: Bapak/Ibu (Wong Tuwo)
+     * Kakek/Nenek: Mbah/Simbah
+     * Orang tua Mbah: Buyut
+     * Orang tua Buyut: Canggah
+     * Orang tua Canggah: Wareng
+     * Orang tua Wareng: Udheg-udheg
+     * Orang tua Udheg-udheg: Gantung siwur
+     * Orang tua Gantung siwur: Grepak senthe
+     * Orang tua Grepak senthe: Debok bosok
+     * Orang tua Debok bosok: Galih asem
+   - KE BAWAH (Mudhun): 
+     * Cucu: Putu
+     * Cicit (anak cucu): Buyut
+   - RELASI SAMPING & LAINNYA:
+     * Saudara/Sepupu laki-laki tertua dari Orang Tua: Pak Puh (Bapak Sepuh)
+     * Kakak laki-laki/perempuan Orang Tua: Pakdhe / Budhe
+     * Adik laki-laki/perempuan Orang Tua: Paklik / Bulik
+     * Anak dari saudara kandung: Ponakan
+     * Saudara Sepupu (anak paman/bibi): Misanan
+     * Saudara Sepupu dari orang tua: Mindhoan
+     * Menantu: Mantu
+     * Saudara lebih tua: Mas / Mbak
+     * Saudara lebih muda: Adik / Dik
+
+ATURAN KOMUNIKASI & FORMAT (WHATSAPP):
+- Gunakan bahasa Indonesia yang sopan dan akrab (ala WhatsApp).
+- Jangan membuat asumsi tentang data — selalu validasi dengan tool.
+- Jawaban harus ringkas, jelas, dan menggunakan emoji yang relevan (misal: 🌳, 👨‍👩‍👧‍👦, ☪️).
+- Gunakan format WhatsApp:
+  * *Teks Tebal* untuk nama orang atau poin penting (contoh: *Siti Nurul*).
+  * _Teks Miring_ untuk istilah asing atau penekanan halus.
+  * Gunakan bullet points (-) untuk daftar anggota keluarga agar mudah dibaca.
+- Jika data tidak ditemukan, sampaikan dengan sopan.`, user.FullName, user.ID, historyLines, stateSummary, user.ID)
+
+	input := fmt.Sprintf("%s\n\nPertanyaan User: %s", systemPrompt, query)
+
+	res, err := chains.Call(ctx, executor, map[string]any{
+		"input": input,
+	})
+	if err != nil {
+		return "", fmt.Errorf("agent execution failed: %v", err)
+	}
+
+	out, ok := res["output"].(string)
+	if !ok {
+		return "Maaf, terjadi kesalahan saat memproses jawaban.", nil
+	}
+	return out, nil
+}
+
+// buildAgentHistorySummary returns the last N messages formatted for agent context.
+func buildAgentHistorySummary(history []db.ChatMessage, maxMsgs int) string {
+	if len(history) == 0 {
+		return "(tidak ada riwayat percakapan)"
+	}
+	start := 0
+	if len(history) > maxMsgs {
+		start = len(history) - maxMsgs
+	}
+	var lines []string
+	for _, m := range history[start:] {
+		role := "User"
+		if m.Role == "assistant" {
+			role = "Bot"
+		}
+		content := m.Content
+		if len(content) > 150 {
+			content = content[:150] + "..."
+		}
+		lines = append(lines, fmt.Sprintf("%s: %s", role, content))
+	}
+	return strings.Join(lines, "\n")
 }

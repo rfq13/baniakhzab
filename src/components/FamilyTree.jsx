@@ -9,9 +9,15 @@ const PAPER_SIZES = {
   A2: { width: 7016, height: 4961 },
 };
 
-const MIN_ZOOM = 0.25;
-const MAX_ZOOM = 4;
-const ZOOM_STEP = 0.1;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 8;
+const ZOOM_STEP = 0.25;
+const WHEEL_ZOOM_SENSITIVITY = 0.0015;
+const SMOOTH_ZOOM_DURATION = 200;
+const SMOOTH_PAN_DURATION = 300;
+const PAN_MOMENTUM_FRICTION = 0.92;
+const PAN_MOMENTUM_MIN_VELOCITY = 0.5;
+const FOCUS_ZOOM_LEVEL = 1.2;
 
 function parseGenerationNumber(gen) {
   if (!gen) return null;
@@ -103,7 +109,30 @@ const FamilyTree = memo(function FamilyTree({
   const containerRef = useRef(null);
   const treeRef = useRef(null);
 
-  const [zoom, setZoom] = useState(0.5);
+  // Transform-based zoom and pan state
+  const [transform, setTransform] = useState({ x: 0, y: 0, zoom: 0.5 });
+  const targetTransformRef = useRef({ startX: 0, startY: 0, startZoom: 0.5, targetX: 0, targetY: 0, targetZoom: 0.5, lastTimestamp: 0 });
+  const animationRef = useRef(null);
+
+  // Pan state with momentum
+  const panRef = useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    velocityX: 0,
+    velocityY: 0,
+    lastX: 0,
+    lastY: 0,
+    lastTimestamp: 0,
+  });
+
+  const momentumRef = useRef({
+    active: false,
+    velocityX: 0,
+    velocityY: 0,
+    animationFrame: null,
+  });
+
   const [exportSize, setExportSize] = useState("A3");
   const [exportError, setExportError] = useState("");
   const [exporting, setExporting] = useState(false);
@@ -129,45 +158,294 @@ const FamilyTree = memo(function FamilyTree({
   const [relationExporting, setRelationExporting] = useState(false);
   const relationRef = useRef(null);
 
-  // Pan state
-  const panRef = useRef({
-    active: false,
-    startX: 0,
-    startY: 0,
-    scrollLeft: 0,
-    scrollTop: 0,
-  });
+  // ===== Animation Helpers =====
+  const lerp = useCallback((start, end, t) => start + (end - start) * t, []);
+  const easeOutCubic = useCallback((t) => 1 - Math.pow(1 - t, 3), []);
 
+  // ===== Smooth Animation Loop =====
+  const runAnimation = useCallback(() => {
+    const now = performance.now();
+    const delta = now - targetTransformRef.current.lastTimestamp;
+    targetTransformRef.current.lastTimestamp = now;
+
+    const progress = Math.min(delta / SMOOTH_ZOOM_DURATION, 1);
+    const easedProgress = easeOutCubic(progress);
+
+    const newX = lerp(targetTransformRef.current.startX, targetTransformRef.current.targetX, easedProgress);
+    const newY = lerp(targetTransformRef.current.startY, targetTransformRef.current.targetY, easedProgress);
+    const newZoom = lerp(targetTransformRef.current.startZoom, targetTransformRef.current.targetZoom, easedProgress);
+
+    setTransform({ x: newX, y: newY, zoom: newZoom });
+
+    if (progress < 1) {
+      animationRef.current = requestAnimationFrame(runAnimation);
+    }
+  }, [lerp, easeOutCubic]);
+
+  const animateTransform = useCallback((newX, newY, newZoom) => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+
+    targetTransformRef.current = {
+      startX: transform.x,
+      startY: transform.y,
+      startZoom: transform.zoom,
+      targetX: newX,
+      targetY: newY,
+      targetZoom: newZoom,
+      lastTimestamp: performance.now(),
+    };
+
+    animationRef.current = requestAnimationFrame(runAnimation);
+  }, [transform, runAnimation]);
+
+  const cancelAnimation = useCallback(() => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
+    }
+  }, []);
+
+  // ===== Cursor-Based Zoom =====
+  const zoomAtPoint = useCallback((deltaZoom, clientX, clientY) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const containerCenterX = rect.width / 2;
+    const containerCenterY = rect.height / 2;
+
+    const cursorOffsetX = clientX - rect.left - containerCenterX;
+    const cursorOffsetY = clientY - rect.top - containerCenterY;
+
+    const currentZoom = transform.zoom;
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom + deltaZoom));
+
+    if (newZoom === currentZoom) return;
+
+    const zoomFactor = newZoom / currentZoom;
+    const newX = cursorOffsetX - cursorOffsetX * zoomFactor;
+    const newY = cursorOffsetY - cursorOffsetY * zoomFactor;
+
+    animateTransform(newX, newY, newZoom);
+  }, [transform, animateTransform]);
+
+  // ===== Pan Handlers =====
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return;
-    const el = containerRef.current;
-    if (!el) return;
+    cancelMomentum();
+    cancelAnimation();
+
     panRef.current = {
       active: true,
       startX: e.clientX,
       startY: e.clientY,
-      scrollLeft: el.scrollLeft,
-      scrollTop: el.scrollTop,
+      velocityX: 0,
+      velocityY: 0,
+      lastX: e.clientX,
+      lastY: e.clientY,
+      lastTimestamp: performance.now(),
     };
-    el.style.cursor = "grabbing";
+    if (containerRef.current) {
+      containerRef.current.style.cursor = "grabbing";
+    }
     e.preventDefault();
-  }, []);
+  }, [cancelAnimation]);
 
   const handleMouseMove = useCallback((e) => {
     if (!panRef.current.active) return;
-    const el = containerRef.current;
-    if (!el) return;
-    el.scrollLeft =
-      panRef.current.scrollLeft - (e.clientX - panRef.current.startX);
-    el.scrollTop =
-      panRef.current.scrollTop - (e.clientY - panRef.current.startY);
+
+    const deltaX = e.clientX - panRef.current.lastX;
+    const deltaY = e.clientY - panRef.current.lastY;
+
+    panRef.current.velocityX = deltaX;
+    panRef.current.velocityY = deltaY;
+    panRef.current.lastX = e.clientX;
+    panRef.current.lastY = e.clientY;
+
+    setTransform(prev => ({
+      ...prev,
+      x: prev.x + deltaX,
+      y: prev.y + deltaY,
+    }));
   }, []);
+
+  // ===== Momentum Animation =====
+  const cancelMomentum = useCallback(() => {
+    if (momentumRef.current.animationFrame) {
+      cancelAnimationFrame(momentumRef.current.animationFrame);
+      momentumRef.current.animationFrame = null;
+    }
+    momentumRef.current.active = false;
+    momentumRef.current.velocityX = 0;
+    momentumRef.current.velocityY = 0;
+  }, []);
+
+  const runMomentum = useCallback(() => {
+    momentumRef.current.velocityX *= PAN_MOMENTUM_FRICTION;
+    momentumRef.current.velocityY *= PAN_MOMENTUM_FRICTION;
+
+    const absVx = Math.abs(momentumRef.current.velocityX);
+    const absVy = Math.abs(momentumRef.current.velocityY);
+
+    if (absVx < PAN_MOMENTUM_MIN_VELOCITY && absVy < PAN_MOMENTUM_MIN_VELOCITY) {
+      cancelMomentum();
+      return;
+    }
+
+    setTransform(prev => ({
+      ...prev,
+      x: prev.x + momentumRef.current.velocityX,
+      y: prev.y + momentumRef.current.velocityY,
+    }));
+
+    momentumRef.current.animationFrame = requestAnimationFrame(runMomentum);
+  }, [cancelMomentum]);
 
   const handleMouseUp = useCallback(() => {
-    panRef.current.active = false;
-    if (containerRef.current) containerRef.current.style.cursor = "";
-  }, []);
+    if (!panRef.current.active) return;
 
+    panRef.current.active = false;
+    if (containerRef.current) {
+      containerRef.current.style.cursor = "";
+    }
+
+    momentumRef.current.velocityX = panRef.current.velocityX;
+    momentumRef.current.velocityY = panRef.current.velocityY;
+    momentumRef.current.active = true;
+    runMomentum();
+  }, [runMomentum]);
+
+  const handleMouseLeave = useCallback(() => {
+    handleMouseUp();
+  }, [handleMouseUp]);
+
+  // ===== Focus on Node =====
+  const focusOnNode = useCallback((nodeId) => {
+    const card = containerRef.current?.querySelector(`[data-person-id="${nodeId}"]`);
+    if (!card) return;
+
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const cardRect = card.getBoundingClientRect();
+
+    const cardCenterX = cardRect.left + cardRect.width / 2 - containerRect.left;
+    const cardCenterY = cardRect.top + cardRect.height / 2 - containerRect.top;
+
+    const containerCenterX = containerRect.width / 2;
+    const containerCenterY = containerRect.height / 2;
+
+    const cardTreeX = (cardCenterX - transform.x) / transform.zoom;
+    const cardTreeY = (cardCenterY - transform.y) / transform.zoom;
+
+    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, FOCUS_ZOOM_LEVEL));
+
+    const newX = containerCenterX - cardTreeX * newZoom;
+    const newY = containerCenterY - cardTreeY * newZoom;
+
+    cancelMomentum();
+    animateTransform(newX, newY, newZoom);
+  }, [transform, animateTransform, cancelMomentum]);
+
+  // ===== Double-Click to Fit =====
+  const handleDoubleClick = useCallback((e) => {
+    const card = e.target.closest('[data-person-id]');
+    if (card) {
+      const personId = card.getAttribute('data-person-id');
+      focusOnNode(personId);
+    }
+  }, [focusOnNode]);
+
+  // ===== Focus on selected card =====
+  useEffect(() => {
+    if (!selectedId) return;
+    focusOnNode(selectedId);
+  }, [selectedId, focusOnNode]);
+
+  // ===== Wheel Handler =====
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    let wheelTimeout = null;
+
+    const onWheel = (e) => {
+      const isHorizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+      if (isHorizontal) return;
+
+      const isTouchpad = Math.abs(e.deltaY) < 50;
+
+      if (isTouchpad) {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          cancelMomentum();
+          cancelAnimation();
+          const deltaZoom = -e.deltaY * WHEEL_ZOOM_SENSITIVITY * 5;
+          zoomAtPoint(deltaZoom, e.clientX, e.clientY);
+        } else {
+          e.preventDefault();
+          cancelMomentum();
+          cancelAnimation();
+          setTransform(prev => ({
+            ...prev,
+            x: prev.x - e.deltaX,
+            y: prev.y - e.deltaY,
+          }));
+        }
+      } else {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          cancelMomentum();
+          cancelAnimation();
+          setTransform(prev => ({
+            ...prev,
+            x: prev.x - e.deltaX,
+            y: prev.y - e.deltaY,
+          }));
+        } else {
+          e.preventDefault();
+          e.stopPropagation();
+          cancelMomentum();
+          cancelAnimation();
+
+          if (wheelTimeout) {
+            cancelAnimationFrame(wheelTimeout);
+          }
+          wheelTimeout = requestAnimationFrame(() => {
+            const deltaZoom = -e.deltaY * WHEEL_ZOOM_SENSITIVITY;
+            zoomAtPoint(deltaZoom, e.clientX, e.clientY);
+          });
+        }
+      }
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      if (wheelTimeout) cancelAnimationFrame(wheelTimeout);
+    };
+  }, [zoomAtPoint, cancelMomentum, cancelAnimation]);
+
+  // ===== Zoom Buttons =====
+  const zoomIn = () => {
+    const newZoom = Math.min(MAX_ZOOM, Math.round((transform.zoom + ZOOM_STEP) * 100) / 100);
+    animateTransform(transform.x, transform.y, newZoom);
+  };
+
+  const zoomOut = () => {
+    const newZoom = Math.max(MIN_ZOOM, Math.round((transform.zoom - ZOOM_STEP) * 100) / 100);
+    animateTransform(transform.x, transform.y, newZoom);
+  };
+
+  const zoomReset = () => {
+    cancelMomentum();
+    animateTransform(0, 0, 0.5);
+  };
+
+  // ===== Dual Connections Effect =====
   const dualConnections = React.useMemo(() => {
     const list = [];
     const walk = (unit) => {
@@ -228,45 +506,9 @@ const FamilyTree = memo(function FamilyTree({
     const onResize = () => update();
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
-  }, [dualConnections, zoom]);
+  }, [dualConnections, transform.zoom]);
 
-  // Scroll selected card into view whenever selectedId changes
-  useEffect(() => {
-    if (!selectedId || !containerRef.current) return;
-    const card = containerRef.current.querySelector(
-      `[data-person-id="${selectedId}"]`,
-    );
-    if (card)
-      card.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-        inline: "center",
-      });
-  }, [selectedId]);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const onWheel = (e) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        setZoom((z) =>
-          Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z - e.deltaY * 0.001)),
-        );
-      }
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, []);
-
-  const zoomIn = () =>
-    setZoom((z) => Math.min(MAX_ZOOM, +(z + ZOOM_STEP).toFixed(2)));
-  const zoomOut = () =>
-    setZoom((z) => Math.max(MIN_ZOOM, +(z - ZOOM_STEP).toFixed(2)));
-  const zoomReset = () => setZoom(0.5);
-
-  // Export
+  // ===== Export =====
   const handleExport = useCallback(
     async (format) => {
       if (!treeRef.current) return;
@@ -274,11 +516,12 @@ const FamilyTree = memo(function FamilyTree({
       setExporting(true);
       setExportError("");
       const treeEl = treeRef.current;
-      const savedZoom = treeEl.style.zoom;
+      const savedTransform = treeEl.style.transform;
+      const savedTransformOrigin = treeEl.style.transformOrigin;
       try {
-        // Reset zoom to 1 so we capture at natural resolution
-        treeEl.style.zoom = "1";
-        // Wait for browser to reflow
+        treeEl.style.transform = "none";
+        treeEl.style.transformOrigin = "center top";
+
         await new Promise((r) => requestAnimationFrame(r));
         await new Promise((r) => requestAnimationFrame(r));
 
@@ -291,7 +534,6 @@ const FamilyTree = memo(function FamilyTree({
         const opts = {
           pixelRatio,
           skipFonts: true,
-          // Placeholder for cross-origin images that fail to load
           imagePlaceholder:
             "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Ccircle cx='18' cy='18' r='18' fill='%23e2e8f0'/%3E%3C/svg%3E",
         };
@@ -306,13 +548,15 @@ const FamilyTree = memo(function FamilyTree({
       } catch (err) {
         setExportError(err instanceof Error ? err.message : "Gagal ekspor.");
       } finally {
-        treeEl.style.zoom = savedZoom;
+        treeEl.style.transform = savedTransform;
+        treeEl.style.transformOrigin = savedTransformOrigin;
         setExporting(false);
       }
     },
     [exportSize],
   );
 
+  // ===== Filter Context =====
   const filterContext = React.useMemo(() => {
     if (!persons) return null;
     const genById = new Map();
@@ -608,7 +852,7 @@ const FamilyTree = memo(function FamilyTree({
           >
             −
           </button>
-          <span className="ft-zoom-label">{Math.round(zoom * 100)}%</span>
+          <span className="ft-zoom-label">{Math.round(transform.zoom * 100)}%</span>
           <button
             type="button"
             className="ft-zoom-btn"
@@ -842,9 +1086,18 @@ const FamilyTree = memo(function FamilyTree({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onDoubleClick={handleDoubleClick}
       >
-        <div ref={treeRef} className="ft-tree" style={{ zoom: zoom }}>
+        <div
+          ref={treeRef}
+          className="ft-tree"
+          style={{
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
+            transformOrigin: 'center top',
+            willChange: 'transform',
+          }}
+        >
           {dualLines.length > 0 && (
             <svg
               className="ft-dual-svg"

@@ -1,15 +1,17 @@
 import React, { useMemo, useState } from "react";
 import FamilyTree from "./components/FamilyTree.jsx";
 import Login from "./components/Login.jsx";
+import AddPersonModal from "./components/AddPersonModal.jsx";
 import WhatsAppPanel from "./components/WhatsAppPanel.jsx";
 import WhatsAppSetup from "./components/WhatsAppSetup.jsx";
 import useOrgData from "./hooks/useOrgData.js";
 import { buildFamilyTree, normalizePersons } from "./utils/buildFamilyTree.js";
 
 export default function App() {
-  const { data, loading, error, authRedirect } = useOrgData();
+  const { data, loading, error, authRedirect, refresh } = useOrgData();
   const [searchTerm, setSearchTerm] = useState("");
   const [showWhatsAppPanel, setShowWhatsAppPanel] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
   const [selectedId, setSelectedId] = useState(() => {
     if (typeof window === "undefined") return null;
     const params = new URLSearchParams(window.location.search);
@@ -36,6 +38,11 @@ export default function App() {
       };
     }
   }, [data]);
+
+  const handleAddPersonSuccess = () => {
+    setShowAddModal(false);
+    refresh();
+  };
 
   // Flat person list for search — derived directly from raw data
   const allPersons = useMemo(() => {

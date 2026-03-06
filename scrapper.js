@@ -4,10 +4,7 @@ import minimist from "minimist";
 
 const BASE_URL = "https://app.silsilahku.com";
 
-// ====== GANTI SESSION ANDA ======
-const SESSION_COOKIE =
-  "eyJpdiI6IlZrN2l6b2lYVXlCUGtPOGxqZzVUUXc9PSIsInZhbHVlIjoiS3JIamp6dnl1UjVWZi95YVZoV0FvV0twdkR0dWhBQjhBSXdpWDRnWTN5NlMvVUw0bWJxMjd2clpmV01ZZWZhUVlSRTZmTE1BRkJ5bEVYUmhhYkdQamlCUWZmaERxTTBDN0VnL2sxbVpyQU5SM0FLWjMySi9STTYyMWlHbHFkUnoiLCJtYWMiOiJiNTliYzkyOTE0MDMwYzMzYzdmY2UxZjkyNjcwZGJlY2RhZDQ3NDE0MjgzNzFiM2E4ZjViZjIxZDdhNjhjNGI5In0=";
-// =================================
+const SESSION_COOKIE = process.env.SESSION_COOKIE || "";
 
 // ====== ARGUMENT PARSER ======
 const args = minimist(process.argv.slice(2));
@@ -23,6 +20,11 @@ node scrapper.js --start=1 --end=5
 }
 
 (async () => {
+  if (!SESSION_COOKIE) {
+    console.error("SESSION_COOKIE belum diset. Jalankan dengan SESSION_COOKIE=<cookie> node scrapper.js ...");
+    process.exit(1);
+  }
+
   console.log(`🚀 Scraping from page ${startPage} to ${endPage}`);
 
   const browser = await chromium.launch({ headless: true });

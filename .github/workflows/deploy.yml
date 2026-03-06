@@ -51,5 +51,17 @@ jobs:
             fi
             cd ~/baniakhzab
             git pull origin main
+
+            # Inject Backend Secrets
+            cat <<EOF > .env.production
+            ${{ secrets.ENV_PRODUCTION }}
+            EOF
+
+            # Inject GoWA Secrets
+            mkdir -p gowa/src
+            cat <<EOF > gowa/src/.env.production
+            ${{ secrets.GOWA_ENV_PRODUCTION }}
+            EOF
+
             docker compose -f docker-compose.prod.yml up -d --build --remove-orphans
             docker image prune -f

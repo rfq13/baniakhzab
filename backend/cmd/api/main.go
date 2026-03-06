@@ -28,6 +28,14 @@ func main() {
 		logger.Error("DATABASE_URL is not set")
 		os.Exit(1)
 	}
+	if strings.TrimSpace(cfg.Auth.JWTSecret) == "" {
+		logger.Error("AUTH_JWT_SECRET is not set")
+		os.Exit(1)
+	}
+	if !cfg.IsDevelopment() && strings.TrimSpace(cfg.WhatsApp.SetupPassword) == "" {
+		logger.Error("GOWA_SETUP_PASSWORD is required when APP_ENV is not development", "app_env", cfg.AppEnv)
+		os.Exit(1)
+	}
 
 	database, err := sql.Open("postgres", cfg.DB.DSN)
 	if err != nil {

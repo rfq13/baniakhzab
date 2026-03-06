@@ -1,53 +1,47 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 export default function useOrgData() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [authRedirect, setAuthRedirect] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  const refresh = useCallback(() => {
+    setRefreshTick((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError("");
+      setAuthRedirect(false);
       try {
-        let token =
-          localStorage.getItem("authToken") ||
-          localStorage.getItem("access_token") ||
-          "";
-        if (!token && typeof window !== "undefined") {
-          const host = window.location.hostname;
-          if (host === "localhost" || host === "127.0.0.1") {
-            const devRes = await fetch("/api/v1/auth/dev", { method: "POST" });
-            if (devRes.ok) {
-              const devJson = await devRes.json();
-              const t =
-                devJson && devJson.access_token ? devJson.access_token : "";
-              if (t) {
-                localStorage.setItem("access_token", t);
-                token = t;
-              }
-            }
+        const isLocalHost =
+          typeof window !== "undefined" &&
+          (window.location.hostname === "localhost" ||
+            window.location.hostname === "127.0.0.1");
+
+        const fetchTree = async () =>
+          fetch("/api/v1/tree", {
+            credentials: "include",
+          });
+
+        let res = await fetchTree();
+        if (res.status === 401 && isLocalHost) {
+          const devRes = await fetch("/api/v1/auth/dev", {
+            method: "POST",
+            credentials: "include",
+          });
+          if (devRes.ok) {
+            res = await fetchTree();
           }
         }
 
-        if (!token) {
-          setAuthRedirect(true);
-          setLoading(false);
-          return;
-        }
-
-        const headers = {};
-        if (token) {
-          headers.Authorization = `Bearer ${token}`;
-        }
-        const res = await fetch("/api/v1/tree", { headers });
         if (!res.ok) {
           if (res.status === 401) {
             setAuthRedirect(true);
-            localStorage.removeItem("access_token");
-            localStorage.removeItem("authToken");
           }
           const text = await res.text();
           throw new Error(text || "Gagal memuat data dari backend.");
@@ -95,7 +89,7 @@ export default function useOrgData() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshTick]);
 
-  return { data, loading, error, authRedirect };
+  return { data, loading, error, authRedirect, refresh };
 }

@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find . -path \"./src*\" -type f -name \"*.tsx\\\\|*.ts\\\\|*.jsx\\\\|*.js\")",
+      "Bash(find ./src -name \"*.tsx\\\\|*.ts\\\\|*.jsx\\\\|*.js\")",
+      "mcp__context7__query-docs",
+      "mcp__db_baniakhzab__query",
+      "Bash(go build ./...)",
+      "Bash(go build -o bin/api .)",
+      "Bash(xargs grep -l \"api/v1/persons\")",
+      "Bash(go build -o bin/api.exe ./cmd/api/main.go)",
+      "Bash(/tmp/fix_parent_couple.txt:*)",
+      "Bash(sed -i '97,105d' \"d:/Ngoding/expr/baniakhzab/backend/internal/db/models.go\")",
+      "Bash(sed -i '96r /tmp/fix_parent_couple.txt' \"d:/Ngoding/expr/baniakhzab/backend/internal/db/models.go\")",
+      "Bash(/tmp/parent_couples_handler.go:*)",
+      "Bash(sed -i '210r /tmp/parent_couples_handler.go' \"d:/Ngoding/expr/baniakhzab/backend/internal/http/server.go\")",
+      "Bash(python:*)"
+    ]
+  }
+}

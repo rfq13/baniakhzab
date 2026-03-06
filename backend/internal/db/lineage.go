@@ -72,6 +72,125 @@ func (s PersonStore) GetSiblings(ctx context.Context, personID string) ([]Person
 	return siblings, nil
 }
 
+func (s PersonStore) GetCousins(ctx context.Context, personID string) ([]Person, error) {
+	person, err := s.GetByID(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]Person)
+
+	addFromParent := func(parentID *string) error {
+		if parentID == nil {
+			return nil
+		}
+		siblings, err := s.GetSiblings(ctx, *parentID)
+		if err != nil {
+			return err
+		}
+		for _, sib := range siblings {
+			children, err := s.GetChildren(ctx, sib.ID)
+			if err != nil {
+				return err
+			}
+			for _, c := range children {
+				if c.ID == personID {
+					continue
+				}
+				if _, ok := result[c.ID]; !ok {
+					result[c.ID] = c
+				}
+			}
+		}
+		return nil
+	}
+
+	if err := addFromParent(person.FatherID); err != nil {
+		return nil, err
+	}
+	if err := addFromParent(person.MotherID); err != nil {
+		return nil, err
+	}
+
+	cousins := make([]Person, 0, len(result))
+	for _, p := range result {
+		cousins = append(cousins, p)
+	}
+	return cousins, nil
+}
+
+// GetGrandparents returns direct grandparents (parents of father and mother).
+func (s PersonStore) GetGrandparents(ctx context.Context, personID string) ([]Person, error) {
+	person, err := s.GetByID(ctx, personID)
+	if err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]bool)
+	var grandparents []Person
+
+	addFromParent := func(parentID *string) error {
+		if parentID == nil {
+			return nil
+		}
+		parent, err := s.GetByID(ctx, *parentID)
+		if err != nil {
+			return nil
+		}
+		if parent.FatherID != nil {
+			if gp, err := s.GetByID(ctx, *parent.FatherID); err == nil {
+				if !seen[gp.ID] {
+					seen[gp.ID] = true
+					grandparents = append(grandparents, *gp)
+				}
+			}
+		}
+		if parent.MotherID != nil {
+			if gp, err := s.GetByID(ctx, *parent.MotherID); err == nil {
+				if !seen[gp.ID] {
+					seen[gp.ID] = true
+					grandparents = append(grandparents, *gp)
+				}
+			}
+		}
+		return nil
+	}
+
+	_ = addFromParent(person.FatherID)
+	_ = addFromParent(person.MotherID)
+
+	return grandparents, nil
+}
+
+// GetParentsSiblings returns siblings of person's parents (uncles/aunts).
+// Returns separate lists for father's siblings (paman) and mother's siblings (bibi).
+func (s PersonStore) GetParentsSiblings(ctx context.Context, personID string) ([]Person, []Person, error) {
+	person, err := s.GetByID(ctx, personID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var fatherSiblings, motherSiblings []Person
+
+	// Get father's siblings (paman)
+	if person.FatherID != nil {
+		fatherSiblings, err = s.GetSiblings(ctx, *person.FatherID)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	// Get mother's siblings (bibi)
+	if person.MotherID != nil {
+		motherSiblings, err = s.GetSiblings(ctx, *person.MotherID)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	return fatherSiblings, motherSiblings, nil
+}
+
 // GetSpouses returns detailed persons for each spouse ID.
 func (s PersonStore) GetSpouses(ctx context.Context, personID string) ([]Person, error) {
 	person, err := s.GetByID(ctx, personID)

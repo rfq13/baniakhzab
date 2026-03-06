@@ -10,7 +10,7 @@ function run(command, args, options) {
   return child;
 }
 
-const backend = run("go", ["run", "./cmd/api"], { cwd: "backend" });
+const backend = run("air", [], { cwd: "backend" });
 const frontend = run("npm", ["run", "dev"], {});
 
 function handleExit(code, signal) {

@@ -13,21 +13,17 @@ export default function Login() {
             fetch("/api/v1/auth/wa/consume", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
+                credentials: "include",
                 body: JSON.stringify({ token }),
             })
                 .then((res) => {
                     if (!res.ok) throw new Error("Token tidak valid atau sudah kadaluarsa.");
-                    return res.json();
+                    return res.json().catch(() => ({}));
                 })
-                .then((data) => {
-                    if (data.access_token) {
-                        localStorage.setItem("access_token", data.access_token);
-                        setStatus("berhasil");
-                        // Hilangkan token dari URL dan reload halaman
-                        window.location.replace("/");
-                    } else {
-                        throw new Error("Gagal mendapatkan akses token.");
-                    }
+                .then(() => {
+                    setStatus("berhasil");
+                    // Hilangkan token dari URL dan reload halaman
+                    window.location.replace("/");
                 })
                 .catch((err) => {
                     setErrorMsg(err.message);

@@ -3,9 +3,11 @@ package http
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -22,6 +24,13 @@ import (
 	"github.com/baniakhzab/backend/internal/whatsapp"
 )
 
+const (
+	accessTokenCookieName    = "baniakhzab_access_token"
+	ajnabiyyahCacheMaxSize   = 500
+	waConsumeRateLimit       = 10
+	waConsumeRateLimitWindow = time.Minute
+)
+
 type Server struct {
 	cfg        config.Config
 	store      *db.Store
@@ -32,7 +41,12 @@ type Server struct {
 	oneTimeTTL time.Duration
 
 	ajnabiyyahCache   map[string]*llm.AjnabiyyahResult
+	ajnabiyyahOrder   []string
+	ajnabiyyahMaxSize int
 	ajnabiyyahCacheMu sync.RWMutex
+
+	corsAllowedOrigin   string
+	waConsumeRateLimiter *rateLimiter
 
 	sseClients map[chan []byte]bool
 	sseMu      sync.RWMutex
@@ -41,6 +55,48 @@ type Server struct {
 type logger interface {
 	Info(msg string, args ...any)
 	Error(msg string, args ...any)
+}
+
+type rateLimiter struct {
+	mu      sync.Mutex
+	entries map[string][]time.Time
+	limit   int
+	window  time.Duration
+}
+
+func newRateLimiter(limit int, window time.Duration) *rateLimiter {
+	return &rateLimiter{
+		entries: make(map[string][]time.Time),
+		limit:   limit,
+		window:  window,
+	}
+}
+
+func (rl *rateLimiter) Allow(key string, now time.Time) bool {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	if key == "" {
+		key = "unknown"
+	}
+
+	cutoff := now.Add(-rl.window)
+	entry := rl.entries[key]
+	kept := entry[:0]
+	for _, ts := range entry {
+		if ts.After(cutoff) {
+			kept = append(kept, ts)
+		}
+	}
+
+	if len(kept) >= rl.limit {
+		rl.entries[key] = kept
+		return false
+	}
+
+	kept = append(kept, now)
+	rl.entries[key] = kept
+	return true
 }
 
 func NewServer(cfg config.Config, store *db.Store, l logger) *Server {
@@ -76,22 +132,27 @@ func NewServer(cfg config.Config, store *db.Store, l logger) *Server {
 	}
 
 	return &Server{
-		cfg:               cfg,
-		store:             store,
-		logger:            l,
-		wa:                waClient,
-		jwt:               jwtManager,
-		llm:               llmClient,
-		oneTimeTTL:        time.Duration(ttl) * time.Minute,
-		ajnabiyyahCache:   make(map[string]*llm.AjnabiyyahResult),
-		ajnabiyyahCacheMu: sync.RWMutex{},
-		sseClients:        make(map[chan []byte]bool),
-		sseMu:             sync.RWMutex{},
+		cfg:                 cfg,
+		store:               store,
+		logger:              l,
+		wa:                  waClient,
+		jwt:                 jwtManager,
+		llm:                 llmClient,
+		oneTimeTTL:          time.Duration(ttl) * time.Minute,
+		ajnabiyyahCache:     make(map[string]*llm.AjnabiyyahResult),
+		ajnabiyyahOrder:     make([]string, 0, ajnabiyyahCacheMaxSize),
+		ajnabiyyahMaxSize:   ajnabiyyahCacheMaxSize,
+		ajnabiyyahCacheMu:   sync.RWMutex{},
+		corsAllowedOrigin:   frontendOrigin(cfg.Auth.FrontendBaseURL),
+		waConsumeRateLimiter: newRateLimiter(waConsumeRateLimit, waConsumeRateLimitWindow),
+		sseClients:          make(map[chan []byte]bool),
+		sseMu:               sync.RWMutex{},
 	}
 }
 
 func (s *Server) Routes() http.Handler {
 	r := chi.NewRouter()
+	r.Use(s.corsMiddleware)
 
 	r.Get("/healthz", s.handleHealth)
 
@@ -99,7 +160,7 @@ func (s *Server) Routes() http.Handler {
 		r.Post("/auth/dev", s.handleDevAuth)
 		r.Get("/admin/summary", s.handleAdminSummary)
 		r.Post("/whatsapp/webhook", s.handleWhatsAppWebhook)
-		r.Post("/auth/wa/consume", s.handleWAConsume)
+		r.With(s.waConsumeRateLimitMiddleware).Post("/auth/wa/consume", s.handleWAConsume)
 
 		r.Get("/whatsapp/setup/qr", s.handleWhatsAppSetupQR)
 		r.Post("/whatsapp/setup/code", s.handleWhatsAppSetupCode)
@@ -112,6 +173,7 @@ func (s *Server) Routes() http.Handler {
 			r.Use(s.authMiddleware)
 
 			r.Get("/persons", s.handleListPersons)
+			r.Get("/parent-couples", s.handleParentCouples)
 			r.Post("/persons", s.handleCreatePerson)
 			r.Get("/persons/{id}", s.handleGetPerson)
 			r.Put("/persons/{id}", s.handleUpdatePerson)
@@ -153,9 +215,7 @@ func (s *Server) handleAdminSummary(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDevAuth(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	frontend := strings.TrimSpace(strings.ToLower(s.cfg.Auth.FrontendBaseURL))
-	isLocalFrontend := strings.Contains(frontend, "localhost")
-	if !isLocalFrontend {
+	if !s.cfg.IsDevelopment() {
 		writeError(w, http.StatusForbidden, "dev auth disabled")
 		return
 	}
@@ -180,17 +240,18 @@ func (s *Server) handleDevAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	token, err := s.jwt.Generate(person.ID, person.WANumber, 24*time.Hour)
+	accessToken, err := s.jwt.Generate(person.ID, person.WANumber, 24*time.Hour)
 	if err != nil {
 		s.logger.Error("generate dev jwt failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to generate token")
 		return
 	}
 
+	s.setAccessTokenCookie(w, accessToken, 24*time.Hour)
+
 	writeJSON(w, http.StatusOK, map[string]any{
-		"access_token": token,
-		"token_type":   "bearer",
-		"person":       person,
+		"token_type": "cookie",
+		"person":     person,
 	})
 }
 
@@ -208,6 +269,19 @@ func (s *Server) handleListPersons(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, persons)
+}
+
+func (s *Server) handleParentCouples(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	
+	couples, err := s.store.Persons.GetParentCouples(ctx)
+	if err != nil {
+		s.logger.Error("list parent couples failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to list parent couples")
+		return
+	}
+	
+	writeJSON(w, http.StatusOK, couples)
 }
 
 func (s *Server) handleCreatePerson(w http.ResponseWriter, r *http.Request) {
@@ -383,9 +457,7 @@ func (s *Server) handleAjnabiyyah(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.ajnabiyyahCacheMu.Lock()
-	s.ajnabiyyahCache[key] = res
-	s.ajnabiyyahCacheMu.Unlock()
+	s.cacheAjnabiyyahResult(key, res)
 
 	writeJSON(w, http.StatusOK, res)
 }
@@ -474,9 +546,10 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "failed to generate token"})
 			return
 		}
+		tokenHash := hashToken(token)
 
 		expiresAt := time.Now().Add(s.oneTimeTTL)
-		if _, err := s.store.Tokens.CreateOneTime(ctx, person.WANumber, token, expiresAt); err != nil {
+		if _, err := s.store.Tokens.CreateOneTime(ctx, person.WANumber, tokenHash, expiresAt); err != nil {
 			s.logger.Error("store token failed", "error", err)
 			writeJSON(w, http.StatusOK, map[string]string{"status": "error", "message": "failed to store token"})
 			return
@@ -798,9 +871,10 @@ func (s *Server) handleWAConsume(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "token is required")
 		return
 	}
+	tokenHash := hashToken(req.Token)
 
 	now := time.Now()
-	t, err := s.store.Tokens.GetValid(ctx, req.Token, now)
+	t, err := s.store.Tokens.GetValid(ctx, tokenHash, now)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid or expired token")
 		return
@@ -824,20 +898,20 @@ func (s *Server) handleWAConsume(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "failed to generate access token")
 		return
 	}
+	s.setAccessTokenCookie(w, accessToken, 24*time.Hour)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"access_token": accessToken,
-		"token_type":   "bearer",
-		"person":       person,
+		"token_type": "cookie",
+		"person":     person,
 	})
 }
 
 func (s *Server) checkSetupPassword(r *http.Request) bool {
-	expected := s.cfg.WhatsApp.SetupPassword
+	expected := strings.TrimSpace(s.cfg.WhatsApp.SetupPassword)
+	actual := strings.TrimSpace(r.Header.Get("X-Setup-Password"))
 	if expected == "" {
-		expected = "admin"
+		return s.cfg.IsDevelopment()
 	}
-	actual := r.Header.Get("X-Setup-Password")
 	return actual == expected
 }
 
@@ -929,6 +1003,11 @@ func randomToken() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
+func hashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 func containsID(list []string, id string) bool {
 	for _, v := range list {
 		if v == id {
@@ -942,24 +1021,28 @@ type authContextKey struct{}
 
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			writeError(w, http.StatusUnauthorized, "missing authorization header")
-			return
+		var token string
+
+		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+		if authHeader != "" {
+			parts := strings.SplitN(authHeader, " ", 2)
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+				writeError(w, http.StatusUnauthorized, "invalid authorization header")
+				return
+			}
+			token = strings.TrimSpace(parts[1])
+		} else if c, err := r.Cookie(accessTokenCookieName); err == nil {
+			token = strings.TrimSpace(c.Value)
 		}
-		parts := strings.SplitN(authHeader, " ", 2)
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-			writeError(w, http.StatusUnauthorized, "invalid authorization header")
-			return
-		}
-		token := strings.TrimSpace(parts[1])
+
 		if token == "" {
-			writeError(w, http.StatusUnauthorized, "invalid authorization header")
+			writeError(w, http.StatusUnauthorized, "missing authentication token")
 			return
 		}
 
 		claims, err := s.jwt.Parse(token)
 		if err != nil {
+			s.clearAccessTokenCookie(w)
 			writeError(w, http.StatusUnauthorized, "invalid or expired token")
 			return
 		}
@@ -967,6 +1050,109 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), authContextKey{}, claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
+		if origin != "" && s.corsAllowedOrigin != "" && strings.EqualFold(origin, s.corsAllowedOrigin) {
+			w.Header().Set("Access-Control-Allow-Origin", s.corsAllowedOrigin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Setup-Password")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Add("Vary", "Origin")
+		}
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) waConsumeRateLimitMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.waConsumeRateLimiter == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		clientIP := requestClientIP(r)
+		if !s.waConsumeRateLimiter.Allow(clientIP, time.Now()) {
+			writeError(w, http.StatusTooManyRequests, "too many auth attempts, please try again later")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func requestClientIP(r *http.Request) string {
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For")); forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		if len(parts) > 0 {
+			ip := strings.TrimSpace(parts[0])
+			if ip != "" {
+				return ip
+			}
+		}
+	}
+
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err == nil && host != "" {
+		return host
+	}
+	return strings.TrimSpace(r.RemoteAddr)
+}
+
+func frontendOrigin(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return strings.ToLower(u.Scheme + "://" + u.Host)
+}
+
+func (s *Server) setAccessTokenCookie(w http.ResponseWriter, token string, ttl time.Duration) {
+	expiresAt := time.Now().Add(ttl)
+	http.SetCookie(w, &http.Cookie{
+		Name:     accessTokenCookieName,
+		Value:    token,
+		Path:     "/",
+		Expires:  expiresAt,
+		MaxAge:   int(ttl.Seconds()),
+		HttpOnly: true,
+		Secure:   !s.cfg.IsDevelopment(),
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func (s *Server) clearAccessTokenCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     accessTokenCookieName,
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   !s.cfg.IsDevelopment(),
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+func (s *Server) cacheAjnabiyyahResult(key string, res *llm.AjnabiyyahResult) {
+	s.ajnabiyyahCacheMu.Lock()
+	defer s.ajnabiyyahCacheMu.Unlock()
+
+	if _, exists := s.ajnabiyyahCache[key]; !exists {
+		s.ajnabiyyahOrder = append(s.ajnabiyyahOrder, key)
+	}
+	s.ajnabiyyahCache[key] = res
+
+	for len(s.ajnabiyyahCache) > s.ajnabiyyahMaxSize && len(s.ajnabiyyahOrder) > 0 {
+		oldest := s.ajnabiyyahOrder[0]
+		s.ajnabiyyahOrder = s.ajnabiyyahOrder[1:]
+		delete(s.ajnabiyyahCache, oldest)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -1022,8 +1208,6 @@ func (s *Server) handleWhatsAppMessagesStream(w http.ResponseWriter, r *http.Req
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	// CORS handling if needed
-	w.Header().Set("Access-Control-Allow-Origin", "*")
 
 	ch := make(chan []byte, 100)
 	s.sseMu.Lock()

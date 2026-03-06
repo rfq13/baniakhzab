@@ -10,6 +10,19 @@
 
 Catatan: file `cleaned_data_v3.json` berada di root proyek dan akan dibaca langsung oleh aplikasi.
 
+## Menjalankan dengan Docker (Local Testing)
+
+1. Pastikan Docker Desktop sudah berjalan.
+2. Jalankan stack local:
+   - `docker compose -f docker-compose.local.yml up --build -d`
+3. Akses frontend:
+   - `http://localhost:5173`
+   - Password setup WhatsApp local default: `local-dev-setup-password`
+4. Cek status container:
+   - `docker compose -f docker-compose.local.yml ps`
+5. Hentikan stack:
+   - `docker compose -f docker-compose.local.yml down`
+
 ## API Backend Utama
 
 - `GET /api/v1/tree`

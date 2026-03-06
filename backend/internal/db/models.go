@@ -268,6 +268,16 @@ func (s PersonStore) Update(ctx context.Context, id string, input PersonInput) (
 	return &p, nil
 }
 
+func (s PersonStore) UpdateWANumber(ctx context.Context, id string, waNumber string) error {
+	const q = `
+		UPDATE persons
+		SET wa_number = $2, updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	_, err := s.DB.ExecContext(ctx, q, id, nullIfEmpty(waNumber))
+	return err
+}
+
 func (s PersonStore) Delete(ctx context.Context, id string) error {
 	const q = `
 		UPDATE persons
@@ -370,4 +380,89 @@ func pgUUIDArray(ids []string) any {
 		return nil
 	}
 	return pq.Array(ids)
+}
+
+type ParentCouple struct {
+	ID           string `json:"id"`
+	FatherID     string `json:"father_id"`
+	FatherName   string `json:"father_name"`
+	MotherID     string `json:"mother_id"`
+	MotherName   string `json:"mother_name"`
+	CoupleName   string `json:"couple_name"`
+	ChildrenCount int    `json:"children_count"`
+}
+
+// GetParentCouples returns all valid parent couples (married male-female pairs)
+func (s PersonStore) GetParentCouples(ctx context.Context) ([]ParentCouple, error) {
+	const q = `
+		SELECT 
+			CONCAT(p1.id, ':', p2.id) as id,
+			p1.id as father_id,
+			p1.full_name as father_name,
+			p2.id as mother_id,
+			p2.full_name as mother_name,
+			CONCAT(p1.full_name, ' & ', p2.full_name) as couple_name,
+			COALESCE(COUNT(DISTINCT c.id), 0) as children_count
+		FROM persons p1
+		JOIN persons p2 ON p2.id = ANY(p1.spouse_ids)
+		LEFT JOIN persons c ON c.father_id = p1.id AND c.mother_id = p2.id
+		WHERE p1.deleted_at IS NULL 
+		  AND p2.deleted_at IS NULL
+		  AND p1.gender = 'Laki-laki'
+		  AND p2.gender = 'Perempuan'
+		GROUP BY p1.id, p1.full_name, p2.id, p2.full_name
+		ORDER BY children_count DESC, p1.full_name, p2.full_name
+	`
+
+	rows, err := s.DB.QueryContext(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var couples []ParentCouple
+	for rows.Next() {
+		var c ParentCouple
+		if err := rows.Scan(
+			&c.ID,
+			&c.FatherID,
+			&c.FatherName,
+			&c.MotherID,
+			&c.MotherName,
+			&c.CoupleName,
+			&c.ChildrenCount,
+		); err != nil {
+			return nil, err
+		}
+		couples = append(couples, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return couples, nil
+}
+
+// ValidateParentCouple checks if given father_id and mother_id form a valid couple
+func (s PersonStore) ValidateParentCouple(ctx context.Context, fatherID, motherID *string) (bool, error) {
+	if fatherID == nil || motherID == nil {
+		return false, nil
+	}
+
+	const q = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM persons p1
+			JOIN persons p2 ON p2.id = ANY(p1.spouse_ids)
+			WHERE p1.id = $1 
+			  AND p2.id = $2
+			  AND p1.deleted_at IS NULL 
+			  AND p2.deleted_at IS NULL
+			  AND p1.gender = 'Laki-laki'
+			  AND p2.gender = 'Perempuan'
+		)
+	`
+
+	var exists bool
+	err := s.DB.QueryRowContext(ctx, q, *fatherID, *motherID).Scan(&exists)
+	return exists, err
 }

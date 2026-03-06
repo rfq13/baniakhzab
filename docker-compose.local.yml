@@ -1,0 +1,48 @@
+services:
+  frontend:
+    image: node:22-alpine
+    working_dir: /app
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - VITE_API_PROXY_TARGET=http://backend:8080
+    volumes:
+      - .:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../Dockerfile.backend
+    env_file:
+      - backend/.env
+    environment:
+      - APP_ENV=development
+      - BACKEND_ADDR=:8080
+      - AUTH_JWT_SECRET=local-dev-jwt-secret
+      - AUTH_FRONTEND_BASE_URL=http://localhost:5173
+      - GOWA_SETUP_PASSWORD=local-dev-setup-password
+      - GOWA_BASE_URL=http://gowa:3000
+    ports:
+      - "8080:8080"
+    depends_on:
+      - gowa
+
+  gowa:
+    build:
+      context: ./gowa
+      dockerfile: ./docker/golang.Dockerfile
+    env_file:
+      - gowa/src/.env.production
+    volumes:
+      - gowa_data:/app/storages
+    ports:
+      - "3000:3000"
+
+volumes:
+  gowa_data:
+  frontend_node_modules:

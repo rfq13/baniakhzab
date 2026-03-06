@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /landing
+Disallow: /api/
+Disallow: /app/
+
+Sitemap: https://baniakhzab.com/sitemap.xml

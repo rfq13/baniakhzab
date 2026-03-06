@@ -30,6 +30,7 @@ type LLMConfig struct {
 }
 
 type Config struct {
+	AppEnv   string
 	Addr     string
 	DB       DBConfig
 	WhatsApp WhatsAppConfig
@@ -38,12 +39,18 @@ type Config struct {
 }
 
 func FromEnv() Config {
+	appEnv := strings.ToLower(strings.TrimSpace(getEnv("APP_ENV", "production")))
+	if appEnv == "" {
+		appEnv = "production"
+	}
+
 	ttl, _ := strconv.Atoi(os.Getenv("AUTH_ONE_TIME_TOKEN_TTL_MINUTES"))
 	if ttl <= 0 {
 		ttl = 10
 	}
 
 	return Config{
+		AppEnv: appEnv,
 		Addr: getEnv("BACKEND_ADDR", ":8080"),
 		DB: DBConfig{
 			DSN: adjustDSN(os.Getenv("DATABASE_URL")),
@@ -52,7 +59,7 @@ func FromEnv() Config {
 			BaseURL:       getEnv("GOWA_BASE_URL", "http://localhost:3000"),
 			BasicUser:     os.Getenv("GOWA_BASIC_USER"),
 			BasicPass:     os.Getenv("GOWA_BASIC_PASS"),
-			SetupPassword: getEnv("GOWA_SETUP_PASSWORD", "admin"),
+			SetupPassword: strings.TrimSpace(os.Getenv("GOWA_SETUP_PASSWORD")),
 		},
 		Auth: AuthConfig{
 			JWTSecret:              os.Getenv("AUTH_JWT_SECRET"),
@@ -65,6 +72,10 @@ func FromEnv() Config {
 			Model:   getEnv("LLM_MODEL", "gpt-4.1-mini"),
 		},
 	}
+}
+
+func (c Config) IsDevelopment() bool {
+	return strings.EqualFold(strings.TrimSpace(c.AppEnv), "development")
 }
 
 func getEnv(key, def string) string {

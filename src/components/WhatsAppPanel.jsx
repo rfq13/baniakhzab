@@ -97,7 +97,7 @@ export default function WhatsAppPanel({ onClose }) {
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
-                            placeholder="Password Setup (Bawaan: admin)"
+                            placeholder="Password Setup WhatsApp"
                             style={styles.input}
                         />
                         <button type="submit" style={styles.btnPrimary}>Akses Panel</button>
