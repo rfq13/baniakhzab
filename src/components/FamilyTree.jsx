@@ -144,7 +144,8 @@ const FamilyTree = memo(function FamilyTree({
   const [exportError, setExportError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [dualLines, setDualLines] = useState([]);
-  const [dualCanvas, setDualCanvas] = useState({ width: 0, height: 0 });
+  const [dualCanvas, setDualCanvas] = useState({ width: 0, height: 0 }); // Kept for backwards compatibility if needed elsewhere
+  const [pathLines, setPathLines] = useState([]);
   const [pairKey, setPairKey] = useState("");
   const [direction, setDirection] = useState("both");
   const [generationFilter, setGenerationFilter] = useState("all");
@@ -487,6 +488,7 @@ const FamilyTree = memo(function FamilyTree({
     }
     const update = () => {
       const rect = treeEl.getBoundingClientRect();
+      const zoom = transformRef.current.zoom;
       const lines = [];
       dualConnections.forEach((conn) => {
         const wifeEl = treeEl.querySelector(
@@ -503,20 +505,24 @@ const FamilyTree = memo(function FamilyTree({
         const parentRect = parentCoupleEl.getBoundingClientRect();
         lines.push({
           key: `dual-${conn.unitId}`,
-          x1: wifeRect.left + wifeRect.width / 2 - rect.left,
-          y1: wifeRect.top + wifeRect.height / 2 - rect.top,
-          x2: parentRect.left + parentRect.width / 2 - rect.left,
-          y2: parentRect.top + parentRect.height / 2 - rect.top,
+          x1: (wifeRect.left + wifeRect.width / 2 - rect.left) / zoom,
+          y1: (wifeRect.top + wifeRect.height / 2 - rect.top) / zoom,
+          x2: (parentRect.left + parentRect.width / 2 - rect.left) / zoom,
+          y2: (parentRect.top + parentRect.height / 2 - rect.top) / zoom,
         });
       });
       setDualLines(lines);
-      setDualCanvas({ width: rect.width, height: rect.height });
+      setDualCanvas({ width: rect.width / zoom, height: rect.height / zoom });
     };
-    update();
+
+    const timer = setTimeout(update, 50); // Small delay to ensure layout is ready
     const onResize = () => update();
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [dualConnections, transform.zoom]);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [dualConnections]);
 
   // ===== Export =====
   const handleExport = useCallback(
@@ -824,6 +830,50 @@ const FamilyTree = memo(function FamilyTree({
 
     return roots.map((r) => filterUnit(r)).filter(Boolean);
   }, [roots, graphVisibleIds]);
+
+  // ===== Relation Path Visually Highlight Effect =====
+  useEffect(() => {
+    const treeEl = treeRef.current;
+    if (!treeEl || !relationResult || !relationResult.paths || relationResult.paths.length === 0) {
+      setPathLines([]);
+      return;
+    }
+
+    const update = () => {
+      const rect = treeEl.getBoundingClientRect();
+      const zoom = transformRef.current.zoom;
+      const lines = [];
+      const shortestPath = relationResult.paths[0]; // Highlight only the shortest path
+
+      shortestPath.steps.forEach((step, i) => {
+        const fromEl = treeEl.querySelector(`[data-person-id="${step.fromId}"]`);
+        const toEl = treeEl.querySelector(`[data-person-id="${step.toId}"]`);
+
+        if (!fromEl || !toEl) return;
+
+        const fromRect = fromEl.getBoundingClientRect();
+        const toRect = toEl.getBoundingClientRect();
+
+        lines.push({
+          key: `path-${step.fromId}-${step.toId}-${i}`,
+          x1: (fromRect.left + fromRect.width / 2 - rect.left) / zoom,
+          y1: (fromRect.top + fromRect.height / 2 - rect.top) / zoom,
+          x2: (toRect.left + toRect.width / 2 - rect.left) / zoom,
+          y2: (toRect.top + toRect.height / 2 - rect.top) / zoom,
+        });
+      });
+
+      setPathLines(lines);
+    };
+
+    const timer = setTimeout(update, 50);
+    const onResize = () => update();
+    window.addEventListener("resize", onResize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [relationResult]);
 
   // ===== Initial Auto-Center =====
   useEffect(() => {
@@ -1159,8 +1209,14 @@ const FamilyTree = memo(function FamilyTree({
           {dualLines.length > 0 && (
             <svg
               className="ft-dual-svg"
-              width={dualCanvas.width}
-              height={dualCanvas.height}
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+              }}
               aria-hidden="true"
             >
               {dualLines.map((line) => (
@@ -1173,6 +1229,32 @@ const FamilyTree = memo(function FamilyTree({
                   stroke="#94a3b8"
                   strokeWidth={2}
                   strokeDasharray="6 6"
+                />
+              ))}
+            </svg>
+          )}
+          {pathLines.length > 0 && (
+            <svg
+              className="ft-path-svg"
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                zIndex: 10,
+              }}
+              aria-hidden="true"
+            >
+              {pathLines.map((line) => (
+                <line
+                  key={line.key}
+                  x1={line.x1}
+                  y1={line.y1}
+                  x2={line.x2}
+                  y2={line.y2}
+                  className="path-highlight-line"
                 />
               ))}
             </svg>
