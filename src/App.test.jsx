@@ -1,35 +1,35 @@
-import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { vi } from "vitest";
-import App from "./App.jsx";
+import React from 'react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { vi } from 'vitest';
+import App from './App.jsx';
 
-vi.mock("./hooks/useOrgData.js", () => ({
+vi.mock('./hooks/useOrgData.js', () => ({
   default: () => ({
     data: [
       {
-        id: "1",
-        name: "Ahmad",
-        url: "https://app.silsilahku.com/masakhzab/det/profile/1/2",
+        id: '1',
+        name: 'Ahmad',
+        url: 'https://app.silsilahku.com/masakhzab/det/profile/1/2',
         father_url: null,
         mother_url: null,
         spouse_urls: [],
         is_mantu: false,
-        img_url: ""
-      }
+        img_url: '',
+      },
     ],
     loading: false,
-    error: "",
+    error: '',
   }),
 }));
 
-vi.mock("./utils/orgGraph.js", () => ({
+vi.mock('./utils/orgGraph.js', () => ({
   buildOrgGraph: () => ({
     nodes: [
       {
-        id: "a",
+        id: 'a',
         position: { x: 0, y: 0 },
         data: {
-          label: "Ahmad",
+          label: 'Ahmad',
         },
       },
     ],
@@ -37,7 +37,7 @@ vi.mock("./utils/orgGraph.js", () => ({
   }),
 }));
 
-vi.mock("@xyflow/react", () => ({
+vi.mock('@xyflow/react', () => ({
   ReactFlowProvider: ({ children }) => <div>{children}</div>,
   useReactFlow: () => ({ setCenter: vi.fn() }),
   ReactFlow: ({ children }) => <div data-testid="reactflow">{children}</div>,
@@ -48,10 +48,10 @@ vi.mock("@xyflow/react", () => ({
   Position: {},
 }));
 
-test("menampilkan input pencarian dan hasil pencarian", () => {
+test('menampilkan input pencarian dan hasil pencarian', () => {
   render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: "Menu" }));
-  const input = screen.getByPlaceholderText("Ketik nama...");
-  fireEvent.change(input, { target: { value: "Ahmad" } });
-  expect(screen.getByRole("button", { name: "Ahmad" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+  const input = screen.getByPlaceholderText('Ketik nama...');
+  fireEvent.change(input, { target: { value: 'Ahmad' } });
+  expect(screen.getByRole('button', { name: 'Ahmad' })).toBeInTheDocument();
 });
