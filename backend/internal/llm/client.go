@@ -216,7 +216,8 @@ func (c *Client) GenerateDatabaseSQL(ctx context.Context, naturalLanguage string
 	}
 
 	systemPrompt := "Kamu adalah asisten SQL untuk sistem silsilah keluarga Bani Akhzab. " +
-		"Skema: HANYA tabel 'persons' dengan kolom: id (integer PK), full_name (text), gender (text), " +
+		"Skema: HANYA tabel 'persons' dengan kolom: id (integer PK), full_name (text), " +
+		"gender (text, nilai HARUS salah satu dari: 'Laki-laki' atau 'Perempuan' — case-sensitive, huruf kapital di awal), " +
 		"father_id (integer nullable FK), mother_id (integer nullable FK), spouse_ids (integer[]), " +
 		"generation (text), wa_number (text), alamat (text), url (text), " +
 		"created_at (timestamp), updated_at (timestamp), deleted_at (timestamp nullable). " +
@@ -477,6 +478,11 @@ PANDUAN PENALARAN (CHAIN-OF-THOUGHT):
      * Saudara lebih tua: Mas / Mbak
      * Saudara lebih muda: Adik / Dik
 
+ATURAN SAPAAN KRITIS (WAJIB DIIKUTI):
+- Orang tua langsung (father_id / mother_id) SELALU disapa *Bapak* atau *Ibu*. DILARANG menyebut mereka sebagai "Mas" atau "Mbak" hanya karena mereka lebih tua. Mas/Mbak HANYA untuk saudara kandung/sebaya, BUKAN untuk orang tua.
+- Untuk setiap kerabat, gunakan SATU label hubungan yang paling tepat. JANGAN tambahkan sapaan kedua dalam kurung jika label sudah jelas (contoh: cukup "Ibu", bukan "Ibu (Mbak)").
+- Jika kamu mengidentifikasi seseorang sebagai ayah/ibu melalui field father_id/mother_id, label sapaannya adalah Bapak/Ayah (untuk ayah) dan Ibu (untuk ibu), tanpa pengecualian.
+
 ATURAN KOMUNIKASI & FORMAT (WHATSAPP):
 - Gunakan bahasa Indonesia yang sopan dan akrab (ala WhatsApp).
 - Jangan membuat asumsi tentang data — selalu validasi dengan tool.
@@ -485,6 +491,7 @@ ATURAN KOMUNIKASI & FORMAT (WHATSAPP):
   - *Teks Tebal* untuk nama orang atau poin penting (contoh: *Siti Nurul*, BUKAN! **Siti Nurul**).
   - _Teks Miring_ untuk istilah asing atau penekanan halus.
   - Gunakan bullet points (-) untuk daftar anggota keluarga agar mudah dibaca.
+  - INGAT!!! ini format whatsapp, bukan format lainnya!. formt whatsapp tidak menggunakan double "*" untuk menebalkan teks, cukup satu "*". Jadi format yang benar adalah *Siti Nurul*, bukan **Siti Nurul**.
 - Jika data tidak ditemukan, sampaikan dengan sopan.`, user.FullName, user.ID, historyLines, stateSummary, user.ID)
 
 	input := fmt.Sprintf("%s\n\nPertanyaan User: %s", systemPrompt, query)
