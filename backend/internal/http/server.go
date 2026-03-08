@@ -11,9 +11,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,8 +35,10 @@ const (
 	accessTokenCookieName    = "baniakhzab_access_token"
 	ajnabiyyahCacheMaxSize   = 500
 	maxQRImageBytes          = 2 * 1024 * 1024
+	maxUploadBytes           = 5 * 1024 * 1024
 	waConsumeRateLimit       = 10
 	waConsumeRateLimitWindow = time.Minute
+	syncImgURLAllowedWA      = "6281232072122"
 )
 
 type Server struct {
@@ -161,6 +166,15 @@ func (s *Server) Routes() http.Handler {
 
 	r.Get("/healthz", s.handleHealth)
 
+	// Serve uploaded files
+	uploadsDir := filepath.Join(".", "uploads")
+	_ = os.MkdirAll(uploadsDir, 0o755)
+	fileServer := http.StripPrefix("/uploads/", http.FileServer(http.Dir(uploadsDir)))
+	r.Get("/uploads/*", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		fileServer.ServeHTTP(w, r)
+	})
+
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Post("/auth/dev", s.handleDevAuth)
 		r.Get("/admin/summary", s.handleAdminSummary)
@@ -185,6 +199,8 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/persons/{id}", s.handleGetPerson)
 			r.Put("/persons/{id}", s.handleUpdatePerson)
 			r.Delete("/persons/{id}", s.handleDeletePerson)
+
+			r.Post("/upload/photo", s.handleUploadPhoto)
 
 			r.Get("/tree", s.handleTree)
 			r.Post("/llm/ajnabiyyah", s.handleAjnabiyyah)
@@ -427,6 +443,78 @@ func (s *Server) handleDeletePerson(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+var allowedImageTypes = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/webp": ".webp",
+}
+
+func (s *Server) handleUploadPhoto(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+	if err := r.ParseMultipartForm(maxUploadBytes); err != nil {
+		writeError(w, http.StatusBadRequest, "file too large (max 5MB)")
+		return
+	}
+
+	file, header, err := r.FormFile("photo")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "photo field is required")
+		return
+	}
+	defer file.Close()
+
+	ct := header.Header.Get("Content-Type")
+	ext, ok := allowedImageTypes[ct]
+	if !ok {
+		// Detect from first 512 bytes
+		buf := make([]byte, 512)
+		n, _ := file.Read(buf)
+		ct = http.DetectContentType(buf[:n])
+		ext, ok = allowedImageTypes[ct]
+		if !ok {
+			writeError(w, http.StatusBadRequest, "only JPEG, PNG or WebP images are allowed")
+			return
+		}
+		if seeker, canSeek := file.(io.ReadSeeker); canSeek {
+			seeker.Seek(0, io.SeekStart)
+		}
+	}
+
+	uploadsDir := filepath.Join(".", "uploads")
+	_ = os.MkdirAll(uploadsDir, 0o755)
+
+	filename := fmt.Sprintf("photo-%d-%s%s", time.Now().UnixMilli(), randomShort(), ext)
+	destPath := filepath.Join(uploadsDir, filename)
+
+	dst, err := os.Create(destPath)
+	if err != nil {
+		s.logger.Error("create upload file failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to save photo")
+		return
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, file); err != nil {
+		s.logger.Error("write upload file failed", "error", err)
+		os.Remove(destPath)
+		writeError(w, http.StatusInternalServerError, "failed to save photo")
+		return
+	}
+
+	photoURL := "/uploads/" + filename
+	writeJSON(w, http.StatusOK, map[string]string{"url": photoURL})
+}
+
+func randomShort() string {
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func validateImageFile(_ multipart.File, _ *multipart.FileHeader) bool {
+	return true
+}
+
 func (s *Server) handleTree(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
@@ -639,6 +727,24 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.EqualFold(body, "sync_img_url") {
+		if waNumber != syncImgURLAllowedWA {
+			_ = s.wa.SendText(ctx, waNumber, "Anda tidak memiliki izin untuk menjalankan perintah ini.")
+			writeJSON(w, http.StatusOK, map[string]string{"status": "unauthorized-sync"})
+			return
+		}
+		_ = s.wa.SendText(ctx, waNumber, "Memulai sinkronisasi gambar profil... mohon tunggu.")
+		writeJSON(w, http.StatusOK, map[string]string{"status": "processing"})
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			if err := s.handleSyncImgURLCommand(bgCtx, waNumber); err != nil {
+				s.logger.Error("handle sync_img_url command failed", "error", err)
+			}
+		}()
+		return
+	}
+
 	if bodyLower == ajnabiyyahPhrase {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "processing"})
 		go func() {
@@ -696,6 +802,50 @@ func (s *Server) handleWhatsAppWebhook(w http.ResponseWriter, r *http.Request) {
 			s.logger.Error("send whatsapp agent response failed", "error", err)
 		}
 	}()
+}
+
+func (s *Server) handleSyncImgURLCommand(ctx context.Context, waNumber string) error {
+	data, err := os.ReadFile("with-gender.json")
+	if err != nil {
+		s.logger.Error("sync_img_url: failed to read with-gender.json", "error", err)
+		_ = s.wa.SendText(ctx, waNumber, "Gagal membaca file with-gender.json: "+err.Error())
+		return err
+	}
+
+	var entries []struct {
+		ID     string `json:"id"`
+		ImgURL string `json:"img_url"`
+	}
+	if err := json.Unmarshal(data, &entries); err != nil {
+		s.logger.Error("sync_img_url: failed to parse with-gender.json", "error", err)
+		_ = s.wa.SendText(ctx, waNumber, "Gagal parse file with-gender.json: "+err.Error())
+		return err
+	}
+
+	updated := 0
+	skipped := 0
+	for _, e := range entries {
+		if e.ID == "" || e.ImgURL == "" {
+			skipped++
+			continue
+		}
+		if strings.Contains(e.ImgURL, "noimg") {
+			skipped++
+			continue
+		}
+		if err := s.store.Persons.UpdateImgURL(ctx, e.ID, e.ImgURL); err != nil {
+			s.logger.Error("sync_img_url: failed to update person", "id", e.ID, "error", err)
+			skipped++
+			continue
+		}
+		updated++
+	}
+
+	msg := fmt.Sprintf("Sync gambar profil selesai.\n\nBerhasil diperbarui: %d\nDilewati: %d\nTotal data: %d", updated, skipped, len(entries))
+	if err := s.wa.SendText(ctx, waNumber, msg); err != nil {
+		s.logger.Error("sync_img_url: failed to send summary", "error", err)
+	}
+	return nil
 }
 
 func (s *Server) handleWhatsAppAjnabiyyahCommand(ctx context.Context, waNumber string) error {

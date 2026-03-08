@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from 'react';
 
 export default function useOrgData() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
   const [authRedirect, setAuthRedirect] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
 
@@ -15,24 +15,24 @@ export default function useOrgData() {
     let cancelled = false;
     async function load() {
       setLoading(true);
-      setError("");
+      setError('');
       setAuthRedirect(false);
       try {
         const isLocalHost =
-          typeof window !== "undefined" &&
-          (window.location.hostname === "localhost" ||
-            window.location.hostname === "127.0.0.1");
+          typeof window !== 'undefined' &&
+          (window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1');
 
         const fetchTree = async () =>
-          fetch("/api/v1/tree", {
-            credentials: "include",
+          fetch('/api/v1/tree', {
+            credentials: 'include',
           });
 
         let res = await fetchTree();
         if (res.status === 401 && isLocalHost) {
-          const devRes = await fetch("/api/v1/auth/dev", {
-            method: "POST",
-            credentials: "include",
+          const devRes = await fetch('/api/v1/auth/dev', {
+            method: 'POST',
+            credentials: 'include',
           });
           if (devRes.ok) {
             res = await fetchTree();
@@ -44,7 +44,7 @@ export default function useOrgData() {
             setAuthRedirect(true);
           }
           const text = await res.text();
-          throw new Error(text || "Gagal memuat data dari backend.");
+          throw new Error(text || 'Gagal memuat data dari backend.');
         }
         const json = await res.json();
         const persons = Array.isArray(json)
@@ -61,11 +61,11 @@ export default function useOrgData() {
             : [];
           return {
             id,
-            name: p.name || p.full_name || "Tanpa Nama",
-            gender: p.gender || "",
+            name: p.name || p.full_name || 'Tanpa Nama',
+            gender: p.gender || '',
             is_mantu: Boolean(p.is_mantu),
             generation: p.generation || null,
-            img_url: "",
+            img_url: p.img_url || '',
             father_id: fatherId,
             mother_id: motherId,
             spouse_ids: spouseIds,
@@ -80,7 +80,7 @@ export default function useOrgData() {
         }
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Gagal memuat data.");
+          setError(e instanceof Error ? e.message : 'Gagal memuat data.');
           setLoading(false);
         }
       }

@@ -1,15 +1,15 @@
-const API_BASE = "/api/v1";
+const API_BASE = '/api/v1';
 
 /**
  * Fetch parent couples from API
  */
 export async function fetchParentCouples() {
   const res = await fetch(`${API_BASE}/parent-couples`, {
-    credentials: "include",
+    credentials: 'include',
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || "Gagal memuat daftar pasangan orang tua.");
+    throw new Error(text || 'Gagal memuat daftar pasangan orang tua.');
   }
   return res.json();
 }
@@ -19,16 +19,16 @@ export async function fetchParentCouples() {
  */
 export async function createPerson(data) {
   const res = await fetch(`${API_BASE}/persons`, {
-    method: "POST",
-    credentials: "include",
+    method: 'POST',
+    credentials: 'include',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(data),
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || "Gagal menambahkan anggota keluarga.");
+    throw new Error(text || 'Gagal menambahkan anggota keluarga.');
   }
   return res.json();
 }
@@ -49,20 +49,39 @@ export async function uploadPhoto(file) {
 }
 
 /**
+ * Upload person photo to server, returns the image URL path
+ */
+export async function uploadPersonPhoto(file) {
+  const formData = new FormData();
+  formData.append('photo', file);
+  const res = await fetch(`${API_BASE}/upload/photo`, {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Gagal mengupload foto.');
+  }
+  const data = await res.json();
+  return data.url;
+}
+
+/**
  * Update an existing person
  */
 export async function updatePerson(id, data) {
   const res = await fetch(`${API_BASE}/persons/${id}`, {
-    method: "PUT",
-    credentials: "include",
+    method: 'PUT',
+    credentials: 'include',
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify(data),
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || "Gagal menyimpan perubahan anggota keluarga.");
+    throw new Error(text || 'Gagal menyimpan perubahan anggota keluarga.');
   }
   return res.json();
 }
@@ -72,11 +91,11 @@ export async function updatePerson(id, data) {
  */
 export async function getPerson(id) {
   const res = await fetch(`${API_BASE}/persons/${id}`, {
-    credentials: "include",
+    credentials: 'include',
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || "Gagal memuat data anggota keluarga.");
+    throw new Error(text || 'Gagal memuat data anggota keluarga.');
   }
   return res.json();
 }

@@ -73,6 +73,7 @@ type Person struct {
 	WANumber   string     `json:"wa_number,omitempty"`
 	Alamat     string     `json:"alamat,omitempty"`
 	URL        string     `json:"url,omitempty"`
+	ImgURL     string     `json:"img_url,omitempty"`
 	FatherID   *string    `json:"father_id,omitempty"`
 	MotherID   *string    `json:"mother_id,omitempty"`
 	SpouseIDs  []string   `json:"spouse_ids"`
@@ -88,6 +89,7 @@ type PersonInput struct {
 	WANumber   string   `json:"wa_number,omitempty"`
 	Alamat     string   `json:"alamat,omitempty"`
 	URL        string   `json:"url,omitempty"`
+	ImgURL     string   `json:"img_url,omitempty"`
 	FatherID   *string  `json:"father_id,omitempty"`
 	MotherID   *string  `json:"mother_id,omitempty"`
 	SpouseIDs  []string `json:"spouse_ids"`
@@ -100,9 +102,9 @@ type PersonStore struct {
 
 func (s PersonStore) Insert(ctx context.Context, input PersonInput) (*Person, error) {
 	const q = `
-		INSERT INTO persons (full_name, gender, wa_number, alamat, url, father_id, mother_id, spouse_ids, generation)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, COALESCE($8::int[], '{}'::int[]), $9)
-		RETURNING id, full_name, gender, wa_number, alamat, url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
+		INSERT INTO persons (full_name, gender, wa_number, alamat, url, img_url, father_id, mother_id, spouse_ids, generation)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::int[], '{}'::int[]), $10)
+		RETURNING id, full_name, gender, wa_number, alamat, url, img_url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
 	`
 
 	row := s.DB.QueryRowContext(
@@ -113,6 +115,7 @@ func (s PersonStore) Insert(ctx context.Context, input PersonInput) (*Person, er
 		nullIfEmpty(input.WANumber),
 		nullIfEmpty(input.Alamat),
 		nullIfEmpty(input.URL),
+		nullIfEmpty(input.ImgURL),
 		input.FatherID,
 		input.MotherID,
 		pgUUIDArray(input.SpouseIDs),
@@ -128,7 +131,7 @@ func (s PersonStore) Insert(ctx context.Context, input PersonInput) (*Person, er
 
 func (s PersonStore) GetByID(ctx context.Context, id string) (*Person, error) {
 	const q = `
-		SELECT id, full_name, gender, wa_number, alamat, url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
+		SELECT id, full_name, gender, wa_number, alamat, url, img_url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
 		FROM persons
 		WHERE id = $1 AND deleted_at IS NULL
 	`
@@ -143,7 +146,7 @@ func (s PersonStore) GetByID(ctx context.Context, id string) (*Person, error) {
 
 func (s PersonStore) GetByWANumber(ctx context.Context, waNumber string) (*Person, error) {
 	const q = `
-		SELECT id, full_name, gender, wa_number, alamat, url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
+		SELECT id, full_name, gender, wa_number, alamat, url, img_url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
 		FROM persons
 		WHERE wa_number = $1 AND deleted_at IS NULL
 	`
@@ -167,7 +170,7 @@ func (s PersonStore) List(ctx context.Context, limit, offset int) ([]Person, err
 	}
 
 	const q = `
-		SELECT id, full_name, gender, wa_number, alamat, url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
+		SELECT id, full_name, gender, wa_number, alamat, url, img_url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
 		FROM persons
 		WHERE deleted_at IS NULL
 		ORDER BY created_at DESC
@@ -200,7 +203,7 @@ func (s PersonStore) SearchByName(ctx context.Context, name string, limit int) (
 	}
 
 	const q = `
-		SELECT id, full_name, gender, wa_number, alamat, url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
+		SELECT id, full_name, gender, wa_number, alamat, url, img_url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
 		FROM persons
 		WHERE deleted_at IS NULL
 		  AND full_name ILIKE '%' || $1 || '%'
@@ -237,13 +240,14 @@ func (s PersonStore) Update(ctx context.Context, id string, input PersonInput) (
 			wa_number = $4,
 			alamat = $5,
 			url = $6,
-			father_id = $7,
-			mother_id = $8,
-			spouse_ids = COALESCE($9::int[], '{}'::int[]),
-			generation = $10,
+			img_url = $7,
+			father_id = $8,
+			mother_id = $9,
+			spouse_ids = COALESCE($10::int[], '{}'::int[]),
+			generation = $11,
 			updated_at = now()
 		WHERE id = $1 AND deleted_at IS NULL
-		RETURNING id, full_name, gender, wa_number, alamat, url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
+		RETURNING id, full_name, gender, wa_number, alamat, url, img_url, father_id, mother_id, spouse_ids, generation, created_at, updated_at, deleted_at
 	`
 
 	row := s.DB.QueryRowContext(
@@ -255,6 +259,7 @@ func (s PersonStore) Update(ctx context.Context, id string, input PersonInput) (
 		nullIfEmpty(input.WANumber),
 		nullIfEmpty(input.Alamat),
 		nullIfEmpty(input.URL),
+		nullIfEmpty(input.ImgURL),
 		input.FatherID,
 		input.MotherID,
 		pgUUIDArray(input.SpouseIDs),
@@ -288,6 +293,22 @@ func (s PersonStore) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+func (s PersonStore) EnsureImgURLColumn(ctx context.Context) error {
+	const q = `ALTER TABLE persons ADD COLUMN IF NOT EXISTS img_url TEXT`
+	_, err := s.DB.ExecContext(ctx, q)
+	return err
+}
+
+func (s PersonStore) UpdateImgURL(ctx context.Context, id string, imgURL string) error {
+	const q = `
+		UPDATE persons
+		SET img_url = $2, updated_at = now()
+		WHERE id = $1 AND deleted_at IS NULL
+	`
+	_, err := s.DB.ExecContext(ctx, q, id, nullIfEmpty(imgURL))
+	return err
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }
@@ -298,6 +319,7 @@ func scanPerson(row scanner, p *Person) error {
 		waNumberNS   sql.NullString
 		alamatNS     sql.NullString
 		urlNS        sql.NullString
+		imgURLNS     sql.NullString
 		spouseUUIDs  []string
 		generationNS sql.NullString
 		fatherNS     sql.NullString
@@ -310,6 +332,7 @@ func scanPerson(row scanner, p *Person) error {
 		&waNumberNS,
 		&alamatNS,
 		&urlNS,
+		&imgURLNS,
 		&fatherNS,
 		&motherNS,
 		pq.Array(&spouseUUIDs),
@@ -340,6 +363,11 @@ func scanPerson(row scanner, p *Person) error {
 		p.URL = urlNS.String
 	} else {
 		p.URL = ""
+	}
+	if imgURLNS.Valid {
+		p.ImgURL = imgURLNS.String
+	} else {
+		p.ImgURL = ""
 	}
 	if generationNS.Valid {
 		p.Generation = generationNS.String

@@ -50,6 +50,12 @@ func main() {
 	}
 
 	store := db.NewStore(database)
+
+	// Auto-migrate: ensure img_url column exists
+	if err := store.Persons.EnsureImgURLColumn(context.Background()); err != nil {
+		logger.Error("failed to ensure img_url column", "error", err)
+	}
+
 	server := httpapi.NewServer(cfg, store, logger)
 
 	httpServer := &http.Server{
