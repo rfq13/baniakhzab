@@ -647,8 +647,8 @@ const FamilyTree = memo(
           if (!target) return false;
           return Boolean(
             target.closest('[data-person-id]') ||
-              target.closest('button, input, select, textarea, a, label') ||
-              target.closest('.ft-filter-panel, .ft-relation-panel')
+            target.closest('button, input, select, textarea, a, label') ||
+            target.closest('.ft-filter-panel, .ft-relation-panel')
           );
         },
         onTouch: (e) => {
