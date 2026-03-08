@@ -1,23 +1,33 @@
 <!doctype html>
 <html lang="id">
-
-<head>
+  <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
 
     <!-- SEO Meta Tags -->
-    <title>Silsilah Keluarga Besar Bani Akhzab — Platform Genealogi Digital</title>
-    <meta name="description"
-        content="Platform digital untuk menelusuri dan menjaga silsilah keluarga besar Bani Akhzab. Visualisasi pohon keluarga interaktif, pencarian anggota, dan analisis hubungan kekerabatan." />
-    <meta name="keywords"
-        content="silsilah keluarga, bani akhzab, family tree, genealogy keluarga, pohon keluarga, kekerabatan" />
+    <title>
+      Silsilah Keluarga Besar Bani Akhzab — Platform Genealogi Digital
+    </title>
+    <meta
+      name="description"
+      content="Platform digital untuk menelusuri dan menjaga silsilah keluarga besar Bani Akhzab. Visualisasi pohon keluarga interaktif, pencarian anggota, dan analisis hubungan kekerabatan."
+    />
+    <meta
+      name="keywords"
+      content="silsilah keluarga, bani akhzab, family tree, genealogy keluarga, pohon keluarga, kekerabatan"
+    />
     <meta name="author" content="Bani Akhzab" />
     <link rel="canonical" href="https://baniakhzab.com/" />
 
     <!-- OpenGraph Meta Tags -->
     <meta property="og:title" content="Silsilah Keluarga Besar Bani Akhzab" />
-    <meta property="og:description"
-        content="Platform digital untuk menelusuri dan menjaga silsilah keluarga besar Bani Akhzab. Menghubungkan generasi, menjaga sejarah keluarga." />
+    <meta
+      property="og:description"
+      content="Platform digital untuk menelusuri dan menjaga silsilah keluarga besar Bani Akhzab. Menghubungkan generasi, menjaga sejarah keluarga."
+    />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://baniakhzab.com/" />
     <meta property="og:image" content="https://baniakhzab.com/logo.svg" />
@@ -27,8 +37,10 @@
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="Silsilah Keluarga Besar Bani Akhzab" />
-    <meta name="twitter:description"
-        content="Platform digital untuk menelusuri dan menjaga silsilah keluarga besar Bani Akhzab." />
+    <meta
+      name="twitter:description"
+      content="Platform digital untuk menelusuri dan menjaga silsilah keluarga besar Bani Akhzab."
+    />
 
     <!-- Favicon -->
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
@@ -37,116 +49,128 @@
     <!-- Google Fonts & Material Symbols -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
-        rel="stylesheet" />
     <link
-        href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap"
-        rel="stylesheet" />
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Amiri:ital,wght@0,400;0,700;1,400&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap"
+      rel="stylesheet"
+    />
 
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <script>
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#D97706",
-                        "secondary": "#78350F",
-                        "background-light": "#FFFBEB",
-                        "background-dark": "#2d1b10",
-                        "charcoal": "#1C1007",
-                        heritage: {
-                            cream: "#FFFBEB",
-                            gold: "#D97706",
-                            bronze: "#92400E",
-                            brown: "#78350F",
-                            dark: "#1C1007",
-                        },
-                        background: "#FFFBEB",
-                        foreground: "hsl(25, 30%, 20%)",
-                        card: "hsl(40, 30%, 95%)",
-                        "card-foreground": "hsl(25, 30%, 20%)",
-                        muted: "hsl(35, 20%, 90%)",
-                        "muted-foreground": "hsl(25, 15%, 45%)",
-                        accent: "hsl(45, 80%, 90%)",
-                        "accent-foreground": "hsl(25, 45%, 20%)",
-                        "primary-foreground": "#FFFBEB",
-                        "secondary-foreground": "#FFFBEB",
-                        border: "hsl(35, 25%, 85%)",
-                        input: "hsl(35, 25%, 85%)",
-                        ring: "#D97706",
-                    },
-                    fontFamily: {
-                        "display": ["Inter", "sans-serif"],
-                        "serif": ["Crimson Pro", "Playfair Display", "Georgia", "serif"],
-                        "sans": ["Plus Jakarta Sans", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
-                    },
-                    borderRadius: { "DEFAULT": "1rem", "lg": "1.25rem", "xl": "1.5rem", "full": "9999px" },
-                    animation: {
-                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        'float': 'float 6s ease-in-out infinite',
-                        'float-delayed': 'float-delayed 8s ease-in-out infinite',
-                        'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
-                        'fade-in-up': 'fade-in-up 0.6s ease-out forwards',
-                        'fade-in-down': 'fade-in-down 0.6s ease-out forwards',
-                        'fade-in-left': 'fade-in-left 0.6s ease-out forwards',
-                        'fade-in-right': 'fade-in-right 0.6s ease-out forwards',
-                        'scale-in': 'scale-in 0.5s ease-out forwards',
-                        'shimmer': 'shimmer 2s linear infinite',
-                        'bounce-subtle': 'bounce-subtle 2s ease-in-out infinite',
-                    },
-                    keyframes: {
-                        float: {
-                            '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-20px)' },
-                        },
-                        'float-delayed': {
-                            '0%, 100%': { transform: 'translateY(0) rotate(5deg)' },
-                            '50%': { transform: 'translateY(-15px) rotate(-5deg)' },
-                        },
-                        'pulse-glow': {
-                            '0%, 100%': { boxShadow: '0 0 20px rgba(217, 119, 6, 0.3)' },
-                            '50%': { boxShadow: '0 0 40px rgba(217, 119, 6, 0.5)' },
-                        },
-                        'fade-in-up': {
-                            '0%': { opacity: '0', transform: 'translateY(30px)' },
-                            '100%': { opacity: '1', transform: 'translateY(0)' },
-                        },
-                        'fade-in-down': {
-                            '0%': { opacity: '0', transform: 'translateY(-30px)' },
-                            '100%': { opacity: '1', transform: 'translateY(0)' },
-                        },
-                        'fade-in-left': {
-                            '0%': { opacity: '0', transform: 'translateX(-30px)' },
-                            '100%': { opacity: '1', transform: 'translateX(0)' },
-                        },
-                        'fade-in-right': {
-                            '0%': { opacity: '0', transform: 'translateX(30px)' },
-                            '100%': { opacity: '1', transform: 'translateX(0)' },
-                        },
-                        'scale-in': {
-                            '0%': { opacity: '0', transform: 'scale(0.9)' },
-                            '100%': { opacity: '1', transform: 'scale(1)' },
-                        },
-                        'shimmer': {
-                            '0%': { backgroundPosition: '-200% 0' },
-                            '100%': { backgroundPosition: '200% 0' },
-                        },
-                        'bounce-subtle': {
-                            '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-5px)' },
-                        },
-                    }
-                },
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              primary: '#D97706',
+              secondary: '#78350F',
+              'background-light': '#FFFBEB',
+              'background-dark': '#2d1b10',
+              charcoal: '#1C1007',
+              heritage: {
+                cream: '#FFFBEB',
+                gold: '#D97706',
+                bronze: '#92400E',
+                brown: '#78350F',
+                dark: '#1C1007',
+              },
+              background: '#FFFBEB',
+              foreground: 'hsl(25, 30%, 20%)',
+              card: 'hsl(40, 30%, 95%)',
+              'card-foreground': 'hsl(25, 30%, 20%)',
+              muted: 'hsl(35, 20%, 90%)',
+              'muted-foreground': 'hsl(25, 15%, 45%)',
+              accent: 'hsl(45, 80%, 90%)',
+              'accent-foreground': 'hsl(25, 45%, 20%)',
+              'primary-foreground': '#FFFBEB',
+              'secondary-foreground': '#FFFBEB',
+              border: 'hsl(35, 25%, 85%)',
+              input: 'hsl(35, 25%, 85%)',
+              ring: '#D97706',
             },
-        }
+            fontFamily: {
+              display: ['Inter', 'sans-serif'],
+              serif: ['Crimson Pro', 'Playfair Display', 'Georgia', 'serif'],
+              sans: [
+                'Plus Jakarta Sans',
+                '-apple-system',
+                'BlinkMacSystemFont',
+                'sans-serif',
+              ],
+            },
+            borderRadius: {
+              DEFAULT: '1rem',
+              lg: '1.25rem',
+              xl: '1.5rem',
+              full: '9999px',
+            },
+            animation: {
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              float: 'float 6s ease-in-out infinite',
+              'float-delayed': 'float-delayed 8s ease-in-out infinite',
+              'pulse-glow': 'pulse-glow 2s ease-in-out infinite',
+              'fade-in-up': 'fade-in-up 0.6s ease-out forwards',
+              'fade-in-down': 'fade-in-down 0.6s ease-out forwards',
+              'fade-in-left': 'fade-in-left 0.6s ease-out forwards',
+              'fade-in-right': 'fade-in-right 0.6s ease-out forwards',
+              'scale-in': 'scale-in 0.5s ease-out forwards',
+              shimmer: 'shimmer 2s linear infinite',
+              'bounce-subtle': 'bounce-subtle 2s ease-in-out infinite',
+            },
+            keyframes: {
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-20px)' },
+              },
+              'float-delayed': {
+                '0%, 100%': { transform: 'translateY(0) rotate(5deg)' },
+                '50%': { transform: 'translateY(-15px) rotate(-5deg)' },
+              },
+              'pulse-glow': {
+                '0%, 100%': { boxShadow: '0 0 20px rgba(217, 119, 6, 0.3)' },
+                '50%': { boxShadow: '0 0 40px rgba(217, 119, 6, 0.5)' },
+              },
+              'fade-in-up': {
+                '0%': { opacity: '0', transform: 'translateY(30px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              'fade-in-down': {
+                '0%': { opacity: '0', transform: 'translateY(-30px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              'fade-in-left': {
+                '0%': { opacity: '0', transform: 'translateX(-30px)' },
+                '100%': { opacity: '1', transform: 'translateX(0)' },
+              },
+              'fade-in-right': {
+                '0%': { opacity: '0', transform: 'translateX(30px)' },
+                '100%': { opacity: '1', transform: 'translateX(0)' },
+              },
+              'scale-in': {
+                '0%': { opacity: '0', transform: 'scale(0.9)' },
+                '100%': { opacity: '1', transform: 'scale(1)' },
+              },
+              shimmer: {
+                '0%': { backgroundPosition: '-200% 0' },
+                '100%': { backgroundPosition: '200% 0' },
+              },
+              'bounce-subtle': {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-5px)' },
+              },
+            },
+          },
+        },
+      };
     </script>
-</head>
+  </head>
 
-<body>
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-</body>
-
+  </body>
 </html>
