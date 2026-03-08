@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"log"
 	"log/slog"
 	"net/http"
@@ -12,7 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/baniakhzab/backend/internal/config"
 	"github.com/baniakhzab/backend/internal/db"
@@ -37,11 +37,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	database, err := sql.Open("postgres", cfg.DB.DSN)
+	connConfig, err := pgx.ParseConfig(cfg.DB.DSN)
 	if err != nil {
-		logger.Error("failed to open database", "error", err)
+		logger.Error("failed to parse database config", "error", err)
 		os.Exit(1)
 	}
+	connConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+
+	database := stdlib.OpenDB(*connConfig)
 	defer database.Close()
 
 	if err := database.Ping(); err != nil {
