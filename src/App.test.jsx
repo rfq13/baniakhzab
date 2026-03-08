@@ -50,6 +50,7 @@ vi.mock("@xyflow/react", () => ({
 
 test("menampilkan input pencarian dan hasil pencarian", () => {
   render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Menu" }));
   const input = screen.getByPlaceholderText("Ketik nama...");
   fireEvent.change(input, { target: { value: "Ahmad" } });
   expect(screen.getByRole("button", { name: "Ahmad" })).toBeInTheDocument();
