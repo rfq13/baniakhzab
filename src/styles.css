@@ -1,5 +1,5 @@
 :root {
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   color: #0f172a;
   background-color: #f8fafc;
 }
@@ -72,7 +72,9 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  transition: transform 0.2s, background 0.2s;
+  transition:
+    transform 0.2s,
+    background 0.2s;
 }
 
 .fab-edit-btn:hover {
@@ -167,7 +169,7 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  background-color: #25D366;
+  background-color: #25d366;
   /* WhatsApp color */
   color: #ffffff;
   border: 1px solid transparent;
@@ -182,7 +184,7 @@ body {
 }
 
 .btn-header-solid:hover {
-  background-color: #128C7E;
+  background-color: #128c7e;
   transform: translateY(-1px);
   box-shadow: 0 4px 6px rgba(37, 211, 102, 0.2);
 }
@@ -232,7 +234,9 @@ body {
 .search-input:focus {
   border-color: #6366f1;
   background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12), 0 1px 3px rgba(15, 23, 42, 0.04);
+  box-shadow:
+    0 0 0 3px rgba(99, 102, 241, 0.12),
+    0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
 .search-results {
@@ -390,7 +394,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.12s, transform 0.1s;
+  transition:
+    background 0.12s,
+    transform 0.1s;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -483,7 +489,7 @@ body {
 }
 
 .fu-stub .person-card::after {
-  content: "↳";
+  content: '↳';
   position: absolute;
   bottom: 4px;
   right: 8px;
@@ -524,7 +530,9 @@ body {
 
 .person-card.pc-highlighted {
   border-color: #3b82f6;
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.25), 0 6px 16px rgba(59, 130, 246, 0.2);
+  box-shadow:
+    0 0 0 4px rgba(59, 130, 246, 0.25),
+    0 6px 16px rgba(59, 130, 246, 0.2);
   transform: translateY(-2px);
   z-index: 5;
 }
@@ -701,7 +709,7 @@ body {
   color: #1e293b;
 }
 
-.ft-relation-checkbox input[type="checkbox"] {
+.ft-relation-checkbox input[type='checkbox'] {
   appearance: none;
   -webkit-appearance: none;
   width: 18px;
@@ -715,17 +723,17 @@ body {
   transition: all 0.2s ease;
 }
 
-.ft-relation-checkbox input[type="checkbox"]:hover {
+.ft-relation-checkbox input[type='checkbox']:hover {
   border-color: #6366f1;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
 }
 
-.ft-relation-checkbox input[type="checkbox"]:checked {
+.ft-relation-checkbox input[type='checkbox']:checked {
   background: #6366f1;
   border-color: #6366f1;
 }
 
-.ft-relation-checkbox input[type="checkbox"]:checked::after {
+.ft-relation-checkbox input[type='checkbox']:checked::after {
   content: '';
   position: absolute;
   left: 4px;
@@ -845,7 +853,9 @@ body {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: background 0.12s, border-color 0.12s;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
 }
 
 .ft-toolbar-toggle-btn:hover {
@@ -893,7 +903,9 @@ body {
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
-  transition: background 0.15s, transform 0.1s;
+  transition:
+    background 0.15s,
+    transform 0.1s;
   user-select: none;
 }
 
@@ -1034,7 +1046,9 @@ body {
   border-radius: 8px;
   font-size: 14px;
   font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
   background: #ffffff;
 }
 
@@ -1156,7 +1170,9 @@ body {
   border-radius: 8px;
   font-size: 14px;
   font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
   background: #ffffff;
 }
 
@@ -1398,7 +1414,7 @@ html {
 }
 
 .landing-menu li a::after {
-  content: "";
+  content: '';
   position: absolute;
   bottom: -4px;
   left: 0;
@@ -1778,13 +1794,17 @@ html {
 }
 
 .cta-section::before {
-  content: "";
+  content: '';
   position: absolute;
   top: -50%;
   left: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.05) 0%, transparent 70%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.05) 0%,
+    transparent 70%
+  );
   pointer-events: none;
 }
 

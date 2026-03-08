@@ -1,30 +1,30 @@
-import React, { useMemo, useState } from "react";
-import FamilyTree from "./components/FamilyTree.jsx";
-import Login from "./components/Login.jsx";
-import AddPersonModal from "./components/AddPersonModal.jsx";
-import WhatsAppPanel from "./components/WhatsAppPanel.jsx";
-import WhatsAppSetup from "./components/WhatsAppSetup.jsx";
-import AdminSettingsModal from "./components/AdminSettingsModal.jsx";
-import EditPersonModal from "./components/EditPersonModal.jsx";
-import useOrgData from "./hooks/useOrgData.js";
-import { buildFamilyTree, normalizePersons } from "./utils/buildFamilyTree.js";
+import React, { useMemo, useState } from 'react';
+import FamilyTree from './components/FamilyTree.jsx';
+import Login from './components/Login.jsx';
+import AddPersonModal from './components/AddPersonModal.jsx';
+import WhatsAppPanel from './components/WhatsAppPanel.jsx';
+import WhatsAppSetup from './components/WhatsAppSetup.jsx';
+import AdminSettingsModal from './components/AdminSettingsModal.jsx';
+import EditPersonModal from './components/EditPersonModal.jsx';
+import useOrgData from './hooks/useOrgData.js';
+import { buildFamilyTree, normalizePersons } from './utils/buildFamilyTree.js';
 
 export default function App() {
   const { data, loading, error, authRedirect, refresh } = useOrgData();
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState('');
   const [showWhatsAppPanel, setShowWhatsAppPanel] = useState(false);
   const [showAdminSettings, setShowAdminSettings] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditPersonModal, setShowEditPersonModal] = useState(false);
   const [showControls, setShowControls] = useState(
-    typeof window !== "undefined" ? window.innerWidth > 640 : true
+    typeof window !== 'undefined' ? window.innerWidth > 640 : true
   );
   const [selectedId, setSelectedId] = useState(() => {
-    if (typeof window === "undefined") return null;
+    if (typeof window === 'undefined') return null;
     const params = new URLSearchParams(window.location.search);
-    const focusId = params.get("focus_id");
-    const a = params.get("a");
-    const b = params.get("b");
+    const focusId = params.get('focus_id');
+    const a = params.get('a');
+    const b = params.get('b');
     if (focusId) return focusId;
     if (a && !b) return a;
     if (b && !a) return b;
@@ -32,16 +32,16 @@ export default function App() {
   });
 
   const treeResult = useMemo(() => {
-    if (!data) return { roots: null, persons: null, error: "" };
+    if (!data) return { roots: null, persons: null, error: '' };
     try {
       const persons = normalizePersons(data);
       const roots = buildFamilyTree(data);
-      return { roots, persons, error: "" };
+      return { roots, persons, error: '' };
     } catch (err) {
       return {
         roots: null,
         persons: null,
-        error: err instanceof Error ? err.message : "Data tidak valid.",
+        error: err instanceof Error ? err.message : 'Data tidak valid.',
       };
     }
   }, [data]);
@@ -54,7 +54,7 @@ export default function App() {
   // Flat person list for search — derived directly from raw data
   const allPersons = useMemo(() => {
     if (!data) return [];
-    return data.map((p) => ({ id: String(p.id), name: p.name || "" }));
+    return data.map((p) => ({ id: String(p.id), name: p.name || '' }));
   }, [data]);
 
   const searchResults = useMemo(() => {
@@ -77,12 +77,12 @@ export default function App() {
     return ids;
   }, [allPersons, searchTerm, selectedId]);
 
-  if (typeof window !== "undefined") {
+  if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("setup") === "1") {
+    if (params.get('setup') === '1') {
       return <WhatsAppSetup />;
     }
-    if (params.get("token") || authRedirect) {
+    if (params.get('token') || authRedirect) {
       return <Login />;
     }
   }
@@ -94,7 +94,9 @@ export default function App() {
           className="btn-toggle-controls"
           onClick={() => setShowControls(!showControls)}
         >
-          {showControls ? "▼ Sembunyikan Filter & Menu" : "▲ Tampilkan Filter & Menu"}
+          {showControls
+            ? '▼ Sembunyikan Filter & Menu'
+            : '▲ Tampilkan Filter & Menu'}
         </button>
       </div>
 
@@ -140,7 +142,7 @@ export default function App() {
                   className="search-result"
                   onClick={() => {
                     setSelectedId(p.id);
-                    setSearchTerm("");
+                    setSearchTerm('');
                   }}
                 >
                   {p.name}

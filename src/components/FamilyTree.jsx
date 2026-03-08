@@ -1,7 +1,7 @@
-import React, { useRef, useState, useCallback, useEffect, memo } from "react";
-import { toPng, toSvg } from "html-to-image";
-import FamilyUnit from "./FamilyUnit.jsx";
-import { findRelationPaths } from "../utils/buildFamilyTree.js";
+import React, { useRef, useState, useCallback, useEffect, memo } from 'react';
+import { toPng, toSvg } from 'html-to-image';
+import FamilyUnit from './FamilyUnit.jsx';
+import { findRelationPaths } from '../utils/buildFamilyTree.js';
 
 const PAPER_SIZES = {
   A4: { width: 3508, height: 2480 },
@@ -30,7 +30,7 @@ function parseGenerationNumber(gen) {
 }
 
 function downloadDataUrl(dataUrl, filename) {
-  const a = document.createElement("a");
+  const a = document.createElement('a');
   a.href = dataUrl;
   a.download = filename;
   a.click();
@@ -152,7 +152,7 @@ function buildConnectorGraph(segments) {
       ordered = [...points].sort(
         (a, b) =>
           pointDistance(a, { x: segment.x1, y: segment.y1 }) -
-          pointDistance(b, { x: segment.x1, y: segment.y1 }),
+          pointDistance(b, { x: segment.x1, y: segment.y1 })
       );
     }
 
@@ -208,7 +208,9 @@ function shortestPathInConnectorGraph(graph, startIndex, endIndex) {
     const neighbors = adjacency.get(current.index) || [];
     neighbors.forEach((neighbor) => {
       if (visited.has(neighbor.to)) return;
-      const nextDistance = current.distance + (Number.isFinite(neighbor.weight) ? neighbor.weight : 1);
+      const nextDistance =
+        current.distance +
+        (Number.isFinite(neighbor.weight) ? neighbor.weight : 1);
       const knownDistance = distances.get(neighbor.to);
       if (knownDistance === undefined || nextDistance < knownDistance) {
         distances.set(neighbor.to, nextDistance);
@@ -254,13 +256,22 @@ function measureRouteLength(nodes, route) {
   return length;
 }
 
-function findBestConnectorRoute(graph, fromCandidates, toCandidates, maxDistance) {
+function findBestConnectorRoute(
+  graph,
+  fromCandidates,
+  toCandidates,
+  maxDistance
+) {
   const fromMatches = getCandidateNodeMatches(
     graph.nodes,
     fromCandidates,
-    maxDistance,
+    maxDistance
   );
-  const toMatches = getCandidateNodeMatches(graph.nodes, toCandidates, maxDistance);
+  const toMatches = getCandidateNodeMatches(
+    graph.nodes,
+    toCandidates,
+    maxDistance
+  );
 
   let best = null;
   fromMatches.forEach((fromMatch) => {
@@ -268,7 +279,7 @@ function findBestConnectorRoute(graph, fromCandidates, toCandidates, maxDistance
       const route = shortestPathInConnectorGraph(
         graph,
         fromMatch.index,
-        toMatch.index,
+        toMatch.index
       );
       if (!route || route.length === 0) return;
       const routeLength = measureRouteLength(graph.nodes, route);
@@ -288,7 +299,7 @@ function findBestConnectorRoute(graph, fromCandidates, toCandidates, maxDistance
 }
 
 function buildFallbackRelationPath(step, startPoint, endPoint) {
-  if (step.kind === "spouse") {
+  if (step.kind === 'spouse') {
     return `M ${startPoint.x} ${startPoint.y} L ${endPoint.x} ${endPoint.y}`;
   }
   const turnY = (startPoint.y + endPoint.y) / 2;
@@ -331,7 +342,7 @@ function getRelationAnchorCandidates(step, fromBox, toBox) {
     { x: toBox.right, y: toBox.centerY },
   ];
 
-  if (step.kind === "spouse") {
+  if (step.kind === 'spouse') {
     const fromIsLeft = fromBox.centerX <= toBox.centerX;
     return {
       from: fromIsLeft
@@ -343,14 +354,14 @@ function getRelationAnchorCandidates(step, fromBox, toBox) {
     };
   }
 
-  if (step.kind === "parent" && step.dir === "to_child") {
+  if (step.kind === 'parent' && step.dir === 'to_child') {
     return {
       from: [{ x: fromBox.centerX, y: fromBox.bottom }, ...defaultFrom],
       to: [{ x: toBox.centerX, y: toBox.top }, ...defaultTo],
     };
   }
 
-  if (step.kind === "parent" && step.dir === "to_parent") {
+  if (step.kind === 'parent' && step.dir === 'to_parent') {
     return {
       from: [{ x: fromBox.centerX, y: fromBox.top }, ...defaultFrom],
       to: [{ x: toBox.centerX, y: toBox.bottom }, ...defaultTo],
@@ -361,22 +372,22 @@ function getRelationAnchorCandidates(step, fromBox, toBox) {
 }
 
 const DIRECTION_OPTIONS = [
-  { value: "both", label: "Leluhur & keturunan" },
-  { value: "down", label: "Keturunan saja" },
-  { value: "up", label: "Leluhur saja" },
+  { value: 'both', label: 'Leluhur & keturunan' },
+  { value: 'down', label: 'Keturunan saja' },
+  { value: 'up', label: 'Leluhur saja' },
 ];
 
 const EXPORT_SIZE_OPTIONS = [
-  { value: "A4", label: "A4" },
-  { value: "A3", label: "A3" },
-  { value: "A2", label: "A2" },
+  { value: 'A4', label: 'A4' },
+  { value: 'A3', label: 'A3' },
+  { value: 'A2', label: 'A2' },
 ];
 
 function SearchableSelect({ id, value, onChange, options, placeholder }) {
   const [open, setOpen] = React.useState(false);
-  const [term, setTerm] = React.useState("");
+  const [term, setTerm] = React.useState('');
   const current = options.find((o) => o.value === value);
-  const displayLabel = current ? current.label : placeholder || "Pilih...";
+  const displayLabel = current ? current.label : placeholder || 'Pilih...';
   const filteredOptions = React.useMemo(() => {
     const t = term.trim().toLowerCase();
     if (!t) return options;
@@ -413,7 +424,7 @@ function SearchableSelect({ id, value, onChange, options, placeholder }) {
                   onClick={() => {
                     onChange(opt.value);
                     setOpen(false);
-                    setTerm("");
+                    setTerm('');
                   }}
                 >
                   {opt.label}
@@ -442,7 +453,15 @@ const FamilyTree = memo(function FamilyTree({
   // Transform-based zoom and pan state
   const [transform, setTransform] = useState({ x: 0, y: 0, zoom: 0.5 });
   const transformRef = useRef({ x: 0, y: 0, zoom: 0.5 });
-  const targetTransformRef = useRef({ startX: 0, startY: 0, startZoom: 0.5, targetX: 0, targetY: 0, targetZoom: 0.5, startTimestamp: 0 });
+  const targetTransformRef = useRef({
+    startX: 0,
+    startY: 0,
+    startZoom: 0.5,
+    targetX: 0,
+    targetY: 0,
+    targetZoom: 0.5,
+    startTimestamp: 0,
+  });
   const animationRef = useRef(null);
   const transformIdleTimerRef = useRef(null);
   const initialFittedRef = useRef(false);
@@ -450,24 +469,27 @@ const FamilyTree = memo(function FamilyTree({
 
   const snapToDevicePixel = useCallback((value) => {
     const dpr =
-      typeof window !== "undefined" &&
-        Number.isFinite(window.devicePixelRatio) &&
-        window.devicePixelRatio > 0
+      typeof window !== 'undefined' &&
+      Number.isFinite(window.devicePixelRatio) &&
+      window.devicePixelRatio > 0
         ? window.devicePixelRatio
         : 1;
     return Math.round(value * dpr) / dpr;
   }, []);
 
-  const normalizeTransform = useCallback((next) => {
-    if (!next) return transformRef.current;
-    const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next.zoom));
-    const roundedZoom = Number(clampedZoom.toFixed(ZOOM_PRECISION));
-    return {
-      x: snapToDevicePixel(next.x),
-      y: snapToDevicePixel(next.y),
-      zoom: roundedZoom,
-    };
-  }, [snapToDevicePixel]);
+  const normalizeTransform = useCallback(
+    (next) => {
+      if (!next) return transformRef.current;
+      const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, next.zoom));
+      const roundedZoom = Number(clampedZoom.toFixed(ZOOM_PRECISION));
+      return {
+        x: snapToDevicePixel(next.x),
+        y: snapToDevicePixel(next.y),
+        zoom: roundedZoom,
+      };
+    },
+    [snapToDevicePixel]
+  );
 
   const scheduleTransformIdle = useCallback(() => {
     if (transformIdleTimerRef.current) {
@@ -479,28 +501,34 @@ const FamilyTree = memo(function FamilyTree({
     }, TRANSFORM_IDLE_DELAY_MS);
   }, []);
 
-  const commitTransform = useCallback((nextOrUpdater) => {
-    setIsTransforming(true);
-    setTransform((prev) => {
-      const next =
-        typeof nextOrUpdater === "function"
-          ? nextOrUpdater(prev)
-          : nextOrUpdater;
-      return normalizeTransform(next);
-    });
-    scheduleTransformIdle();
-  }, [normalizeTransform, scheduleTransformIdle]);
+  const commitTransform = useCallback(
+    (nextOrUpdater) => {
+      setIsTransforming(true);
+      setTransform((prev) => {
+        const next =
+          typeof nextOrUpdater === 'function'
+            ? nextOrUpdater(prev)
+            : nextOrUpdater;
+        return normalizeTransform(next);
+      });
+      scheduleTransformIdle();
+    },
+    [normalizeTransform, scheduleTransformIdle]
+  );
 
   // Keep transformRef in sync with state
   useEffect(() => {
     transformRef.current = transform;
   }, [transform]);
 
-  useEffect(() => () => {
-    if (transformIdleTimerRef.current) {
-      clearTimeout(transformIdleTimerRef.current);
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      if (transformIdleTimerRef.current) {
+        clearTimeout(transformIdleTimerRef.current);
+      }
+    },
+    []
+  );
 
   // Pan state with momentum
   const panRef = useRef({
@@ -531,24 +559,24 @@ const FamilyTree = memo(function FamilyTree({
     lastPinchMidY: 0,
   });
 
-  const [exportSize, setExportSize] = useState("A3");
-  const [exportError, setExportError] = useState("");
+  const [exportSize, setExportSize] = useState('A3');
+  const [exportError, setExportError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [dualLines, setDualLines] = useState([]);
   const [dualCanvas, setDualCanvas] = useState({ width: 0, height: 0 }); // Kept for backwards compatibility if needed elsewhere
   const [pathLines, setPathLines] = useState([]);
-  const [pairKey, setPairKey] = useState("");
-  const [direction, setDirection] = useState("both");
-  const [generationFilter, setGenerationFilter] = useState("all");
+  const [pairKey, setPairKey] = useState('');
+  const [direction, setDirection] = useState('both');
+  const [generationFilter, setGenerationFilter] = useState('all');
   const [relationAId, setRelationAId] = useState(() => {
-    if (typeof window === "undefined") return "";
+    if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
-    return params.get("a") || "";
+    return params.get('a') || '';
   });
   const [relationBId, setRelationBId] = useState(() => {
-    if (typeof window === "undefined") return "";
+    if (typeof window === 'undefined') return '';
     const params = new URLSearchParams(window.location.search);
-    return params.get("b") || "";
+    return params.get('b') || '';
   });
   const [relationKinds, setRelationKinds] = useState({
     parent: true,
@@ -571,9 +599,21 @@ const FamilyTree = memo(function FamilyTree({
     const progress = Math.min(delta / SMOOTH_ZOOM_DURATION, 1);
     const easedProgress = easeOutCubic(progress);
 
-    const newX = lerp(targetTransformRef.current.startX, targetTransformRef.current.targetX, easedProgress);
-    const newY = lerp(targetTransformRef.current.startY, targetTransformRef.current.targetY, easedProgress);
-    const newZoom = lerp(targetTransformRef.current.startZoom, targetTransformRef.current.targetZoom, easedProgress);
+    const newX = lerp(
+      targetTransformRef.current.startX,
+      targetTransformRef.current.targetX,
+      easedProgress
+    );
+    const newY = lerp(
+      targetTransformRef.current.startY,
+      targetTransformRef.current.targetY,
+      easedProgress
+    );
+    const newZoom = lerp(
+      targetTransformRef.current.startZoom,
+      targetTransformRef.current.targetZoom,
+      easedProgress
+    );
 
     commitTransform({ x: newX, y: newY, zoom: newZoom });
 
@@ -582,29 +622,32 @@ const FamilyTree = memo(function FamilyTree({
     }
   }, [lerp, easeOutCubic, commitTransform]);
 
-  const animateTransform = useCallback((newX, newY, newZoom) => {
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
+  const animateTransform = useCallback(
+    (newX, newY, newZoom) => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
 
-    const cur = transformRef.current;
-    const normalizedTarget = normalizeTransform({
-      x: newX,
-      y: newY,
-      zoom: newZoom,
-    });
-    targetTransformRef.current = {
-      startX: cur.x,
-      startY: cur.y,
-      startZoom: cur.zoom,
-      targetX: normalizedTarget.x,
-      targetY: normalizedTarget.y,
-      targetZoom: normalizedTarget.zoom,
-      startTimestamp: performance.now(),
-    };
+      const cur = transformRef.current;
+      const normalizedTarget = normalizeTransform({
+        x: newX,
+        y: newY,
+        zoom: newZoom,
+      });
+      targetTransformRef.current = {
+        startX: cur.x,
+        startY: cur.y,
+        startZoom: cur.zoom,
+        targetX: normalizedTarget.x,
+        targetY: normalizedTarget.y,
+        targetZoom: normalizedTarget.zoom,
+        startTimestamp: performance.now(),
+      };
 
-    animationRef.current = requestAnimationFrame(runAnimation);
-  }, [runAnimation, normalizeTransform]);
+      animationRef.current = requestAnimationFrame(runAnimation);
+    },
+    [runAnimation, normalizeTransform]
+  );
 
   const cancelAnimation = useCallback(() => {
     if (animationRef.current) {
@@ -614,68 +657,80 @@ const FamilyTree = memo(function FamilyTree({
   }, []);
 
   // ===== Cursor-Based Zoom =====
-  const zoomAtPoint = useCallback((deltaZoom, clientX, clientY) => {
-    const container = containerRef.current;
-    if (!container) return;
+  const zoomAtPoint = useCallback(
+    (deltaZoom, clientX, clientY) => {
+      const container = containerRef.current;
+      if (!container) return;
 
-    const rect = container.getBoundingClientRect();
-    const cursorX = clientX - rect.left;
-    const cursorY = clientY - rect.top;
+      const rect = container.getBoundingClientRect();
+      const cursorX = clientX - rect.left;
+      const cursorY = clientY - rect.top;
 
-    const cur = transformRef.current;
-    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, cur.zoom + deltaZoom));
+      const cur = transformRef.current;
+      const newZoom = Math.max(
+        MIN_ZOOM,
+        Math.min(MAX_ZOOM, cur.zoom + deltaZoom)
+      );
 
-    if (newZoom === cur.zoom) return;
+      if (newZoom === cur.zoom) return;
 
-    // Keep the same tree point under the cursor while zooming.
-    const treeX = (cursorX - cur.x) / cur.zoom;
-    const treeY = (cursorY - cur.y) / cur.zoom;
-    const newX = cursorX - treeX * newZoom;
-    const newY = cursorY - treeY * newZoom;
+      // Keep the same tree point under the cursor while zooming.
+      const treeX = (cursorX - cur.x) / cur.zoom;
+      const treeY = (cursorY - cur.y) / cur.zoom;
+      const newX = cursorX - treeX * newZoom;
+      const newY = cursorY - treeY * newZoom;
 
-    cancelAnimation();
-    commitTransform({ x: newX, y: newY, zoom: newZoom });
-  }, [cancelAnimation, commitTransform]);
+      cancelAnimation();
+      commitTransform({ x: newX, y: newY, zoom: newZoom });
+    },
+    [cancelAnimation, commitTransform]
+  );
 
   // ===== Pan Handlers =====
-  const handleMouseDown = useCallback((e) => {
-    if (e.button !== 0) return;
-    cancelMomentum();
-    cancelAnimation();
+  const handleMouseDown = useCallback(
+    (e) => {
+      if (e.button !== 0) return;
+      cancelMomentum();
+      cancelAnimation();
 
-    panRef.current = {
-      active: true,
-      startX: e.clientX,
-      startY: e.clientY,
-      velocityX: 0,
-      velocityY: 0,
-      lastX: e.clientX,
-      lastY: e.clientY,
-      lastTimestamp: performance.now(),
-    };
-    if (containerRef.current) {
-      containerRef.current.style.cursor = "grabbing";
-    }
-    e.preventDefault();
-  }, [cancelAnimation]);
+      panRef.current = {
+        active: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        velocityX: 0,
+        velocityY: 0,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        lastTimestamp: performance.now(),
+      };
+      if (containerRef.current) {
+        containerRef.current.style.cursor = 'grabbing';
+      }
+      e.preventDefault();
+    },
+    [cancelAnimation]
+  );
 
-  const handleMouseMove = useCallback((e) => {
-    if (!panRef.current.active) return;
+  const handleMouseMove = useCallback(
+    (e) => {
+      if (!panRef.current.active) return;
 
-    const deltaX = e.clientX - panRef.current.lastX;
-    const deltaY = e.clientY - panRef.current.lastY;
+      const deltaX = e.clientX - panRef.current.lastX;
+      const deltaY = e.clientY - panRef.current.lastY;
 
-    panRef.current.velocityX = deltaX;
-    panRef.current.velocityY = deltaY;
-    panRef.current.lastX = e.clientX;
-    panRef.current.lastY = e.clientY;
+      panRef.current.velocityX = deltaX;
+      panRef.current.velocityY = deltaY;
+      panRef.current.lastX = e.clientX;
+      panRef.current.lastY = e.clientY;
 
-    commitTransform(prev => ({
-      ...prev,
-      x: prev.x + deltaX,
-      y: prev.y + deltaY,
-    }));
-  }, [commitTransform]);
+      commitTransform((prev) => ({
+        ...prev,
+        x: prev.x + deltaX,
+        y: prev.y + deltaY,
+      }));
+    },
+    [commitTransform]
+  );
 
   // ===== Momentum Animation =====
   const cancelMomentum = useCallback(() => {
@@ -695,12 +750,15 @@ const FamilyTree = memo(function FamilyTree({
     const absVx = Math.abs(momentumRef.current.velocityX);
     const absVy = Math.abs(momentumRef.current.velocityY);
 
-    if (absVx < PAN_MOMENTUM_MIN_VELOCITY && absVy < PAN_MOMENTUM_MIN_VELOCITY) {
+    if (
+      absVx < PAN_MOMENTUM_MIN_VELOCITY &&
+      absVy < PAN_MOMENTUM_MIN_VELOCITY
+    ) {
       cancelMomentum();
       return;
     }
 
-    commitTransform(prev => ({
+    commitTransform((prev) => ({
       ...prev,
       x: prev.x + momentumRef.current.velocityX,
       y: prev.y + momentumRef.current.velocityY,
@@ -714,7 +772,7 @@ const FamilyTree = memo(function FamilyTree({
 
     panRef.current.active = false;
     if (containerRef.current) {
-      containerRef.current.style.cursor = "";
+      containerRef.current.style.cursor = '';
     }
 
     momentumRef.current.velocityX = panRef.current.velocityX;
@@ -728,163 +786,180 @@ const FamilyTree = memo(function FamilyTree({
   }, [handleMouseUp]);
 
   // ===== Touch Handlers =====
-  const handleTouchStart = useCallback((e) => {
-    const target = e.target instanceof Element ? e.target : null;
-    // Only handled if touching the canvas, preventing interference with UI controls
-    if (target?.closest('.ft-toolbar') || target?.closest('.ft-relation-panel') || target?.closest('.ft-filter-panel')) return;
+  const handleTouchStart = useCallback(
+    (e) => {
+      const target = e.target instanceof Element ? e.target : null;
+      // Only handled if touching the canvas, preventing interference with UI controls
+      if (
+        target?.closest('.ft-toolbar') ||
+        target?.closest('.ft-relation-panel') ||
+        target?.closest('.ft-filter-panel')
+      )
+        return;
 
-    cancelMomentum();
-    cancelAnimation();
-    const touches = e.touches;
+      cancelMomentum();
+      cancelAnimation();
+      const touches = e.touches;
 
-    if (touches.length === 1) {
-      // Pan
-      touchStateRef.current = {
-        isPanning: true,
-        isPinching: false,
-        lastX: touches[0].clientX,
-        lastY: touches[0].clientY,
-        lastPinchDistance: 0,
-        lastPinchMidX: 0,
-        lastPinchMidY: 0,
-      };
-      panRef.current = {
-        active: true,
-        startX: touches[0].clientX,
-        startY: touches[0].clientY,
-        velocityX: 0,
-        velocityY: 0,
-        lastX: touches[0].clientX,
-        lastY: touches[0].clientY,
-        lastTimestamp: performance.now(),
-      };
-    } else if (touches.length === 2) {
-      // Pinch
-      e.preventDefault();
-      touchStateRef.current.isPanning = false;
-      touchStateRef.current.isPinching = true;
-      const dx = touches[0].clientX - touches[1].clientX;
-      const dy = touches[0].clientY - touches[1].clientY;
-      touchStateRef.current.lastPinchDistance = Math.sqrt(dx * dx + dy * dy);
-      touchStateRef.current.lastPinchMidX =
-        (touches[0].clientX + touches[1].clientX) / 2;
-      touchStateRef.current.lastPinchMidY =
-        (touches[0].clientY + touches[1].clientY) / 2;
-      panRef.current.active = false;
-    }
-  }, [cancelAnimation, cancelMomentum]);
-
-  const handleTouchMove = useCallback((e) => {
-    const touches = e.touches;
-
-    if (touchStateRef.current.isPinching && touches.length === 2) {
-      e.preventDefault(); // Prevent native browser zooming/scrolling
-      const dx = touches[0].clientX - touches[1].clientX;
-      const dy = touches[0].clientY - touches[1].clientY;
-      const currentDistance = Math.sqrt(dx * dx + dy * dy);
-      const previousDistance = touchStateRef.current.lastPinchDistance;
-      if (!Number.isFinite(currentDistance) || currentDistance <= 0) return;
-      if (!Number.isFinite(previousDistance) || previousDistance <= 0) {
-        touchStateRef.current.lastPinchDistance = currentDistance;
+      if (touches.length === 1) {
+        // Pan
+        touchStateRef.current = {
+          isPanning: true,
+          isPinching: false,
+          lastX: touches[0].clientX,
+          lastY: touches[0].clientY,
+          lastPinchDistance: 0,
+          lastPinchMidX: 0,
+          lastPinchMidY: 0,
+        };
+        panRef.current = {
+          active: true,
+          startX: touches[0].clientX,
+          startY: touches[0].clientY,
+          velocityX: 0,
+          velocityY: 0,
+          lastX: touches[0].clientX,
+          lastY: touches[0].clientY,
+          lastTimestamp: performance.now(),
+        };
+      } else if (touches.length === 2) {
+        // Pinch
+        e.preventDefault();
+        touchStateRef.current.isPanning = false;
+        touchStateRef.current.isPinching = true;
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        touchStateRef.current.lastPinchDistance = Math.sqrt(dx * dx + dy * dy);
         touchStateRef.current.lastPinchMidX =
           (touches[0].clientX + touches[1].clientX) / 2;
         touchStateRef.current.lastPinchMidY =
           (touches[0].clientY + touches[1].clientY) / 2;
-        return;
-      }
-      const zoomRatio = currentDistance / previousDistance;
-      const cur = transformRef.current;
-      const newZoom = cur.zoom * zoomRatio;
-      const midX = (touches[0].clientX + touches[1].clientX) / 2;
-      const midY = (touches[0].clientY + touches[1].clientY) / 2;
-
-      const container = containerRef.current;
-      if (!container) return;
-
-      const rect = container.getBoundingClientRect();
-      const previousMidX = touchStateRef.current.lastPinchMidX || midX;
-      const previousMidY = touchStateRef.current.lastPinchMidY || midY;
-      const prevCursorX = previousMidX - rect.left;
-      const prevCursorY = previousMidY - rect.top;
-      const cursorX = midX - rect.left;
-      const cursorY = midY - rect.top;
-
-      const treeX = (prevCursorX - cur.x) / cur.zoom;
-      const treeY = (prevCursorY - cur.y) / cur.zoom;
-
-      const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
-      const newX = cursorX - treeX * clampedZoom;
-      const newY = cursorY - treeY * clampedZoom;
-
-      commitTransform({ x: newX, y: newY, zoom: clampedZoom });
-      touchStateRef.current.lastPinchDistance = currentDistance;
-      touchStateRef.current.lastPinchMidX = midX;
-      touchStateRef.current.lastPinchMidY = midY;
-    } else if (touchStateRef.current.isPanning && touches.length === 1) {
-      const target = e.target instanceof Element ? e.target : null;
-      // Prevent native scroll only on touch pan to avoid pull-to-refresh
-      // Ensure we're not touching a scrollable panel
-      if (!target?.closest('.modal-container') && !target?.closest('.search-results')) {
-        e.preventDefault();
-      }
-
-      const deltaX = touches[0].clientX - touchStateRef.current.lastX;
-      const deltaY = touches[0].clientY - touchStateRef.current.lastY;
-
-      touchStateRef.current.lastX = touches[0].clientX;
-      touchStateRef.current.lastY = touches[0].clientY;
-
-      panRef.current.velocityX = deltaX;
-      panRef.current.velocityY = deltaY;
-      panRef.current.lastX = touches[0].clientX;
-      panRef.current.lastY = touches[0].clientY;
-
-      commitTransform(prev => ({
-        ...prev,
-        x: prev.x + deltaX,
-        y: prev.y + deltaY,
-      }));
-    }
-  }, [commitTransform]);
-
-  const handleTouchEnd = useCallback((e) => {
-    const touches = e.touches;
-    if (touches.length === 0) {
-      touchStateRef.current.isPanning = false;
-      touchStateRef.current.isPinching = false;
-      touchStateRef.current.lastPinchDistance = 0;
-      touchStateRef.current.lastPinchMidX = 0;
-      touchStateRef.current.lastPinchMidY = 0;
-
-      if (panRef.current.active) {
         panRef.current.active = false;
-        momentumRef.current.velocityX = panRef.current.velocityX;
-        momentumRef.current.velocityY = panRef.current.velocityY;
-        momentumRef.current.active = true;
-        runMomentum();
       }
-    } else if (touches.length === 1) {
-      touchStateRef.current = {
-        isPanning: true,
-        isPinching: false,
-        lastX: touches[0].clientX,
-        lastY: touches[0].clientY,
-        lastPinchDistance: 0,
-        lastPinchMidX: 0,
-        lastPinchMidY: 0,
-      };
-      panRef.current = {
-        active: true,
-        startX: touches[0].clientX,
-        startY: touches[0].clientY,
-        velocityX: 0,
-        velocityY: 0,
-        lastX: touches[0].clientX,
-        lastY: touches[0].clientY,
-        lastTimestamp: performance.now(),
-      };
-    }
-  }, [runMomentum]);
+    },
+    [cancelAnimation, cancelMomentum]
+  );
+
+  const handleTouchMove = useCallback(
+    (e) => {
+      const touches = e.touches;
+
+      if (touchStateRef.current.isPinching && touches.length === 2) {
+        e.preventDefault(); // Prevent native browser zooming/scrolling
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        const currentDistance = Math.sqrt(dx * dx + dy * dy);
+        const previousDistance = touchStateRef.current.lastPinchDistance;
+        if (!Number.isFinite(currentDistance) || currentDistance <= 0) return;
+        if (!Number.isFinite(previousDistance) || previousDistance <= 0) {
+          touchStateRef.current.lastPinchDistance = currentDistance;
+          touchStateRef.current.lastPinchMidX =
+            (touches[0].clientX + touches[1].clientX) / 2;
+          touchStateRef.current.lastPinchMidY =
+            (touches[0].clientY + touches[1].clientY) / 2;
+          return;
+        }
+        const zoomRatio = currentDistance / previousDistance;
+        const cur = transformRef.current;
+        const newZoom = cur.zoom * zoomRatio;
+        const midX = (touches[0].clientX + touches[1].clientX) / 2;
+        const midY = (touches[0].clientY + touches[1].clientY) / 2;
+
+        const container = containerRef.current;
+        if (!container) return;
+
+        const rect = container.getBoundingClientRect();
+        const previousMidX = touchStateRef.current.lastPinchMidX || midX;
+        const previousMidY = touchStateRef.current.lastPinchMidY || midY;
+        const prevCursorX = previousMidX - rect.left;
+        const prevCursorY = previousMidY - rect.top;
+        const cursorX = midX - rect.left;
+        const cursorY = midY - rect.top;
+
+        const treeX = (prevCursorX - cur.x) / cur.zoom;
+        const treeY = (prevCursorY - cur.y) / cur.zoom;
+
+        const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
+        const newX = cursorX - treeX * clampedZoom;
+        const newY = cursorY - treeY * clampedZoom;
+
+        commitTransform({ x: newX, y: newY, zoom: clampedZoom });
+        touchStateRef.current.lastPinchDistance = currentDistance;
+        touchStateRef.current.lastPinchMidX = midX;
+        touchStateRef.current.lastPinchMidY = midY;
+      } else if (touchStateRef.current.isPanning && touches.length === 1) {
+        const target = e.target instanceof Element ? e.target : null;
+        // Prevent native scroll only on touch pan to avoid pull-to-refresh
+        // Ensure we're not touching a scrollable panel
+        if (
+          !target?.closest('.modal-container') &&
+          !target?.closest('.search-results')
+        ) {
+          e.preventDefault();
+        }
+
+        const deltaX = touches[0].clientX - touchStateRef.current.lastX;
+        const deltaY = touches[0].clientY - touchStateRef.current.lastY;
+
+        touchStateRef.current.lastX = touches[0].clientX;
+        touchStateRef.current.lastY = touches[0].clientY;
+
+        panRef.current.velocityX = deltaX;
+        panRef.current.velocityY = deltaY;
+        panRef.current.lastX = touches[0].clientX;
+        panRef.current.lastY = touches[0].clientY;
+
+        commitTransform((prev) => ({
+          ...prev,
+          x: prev.x + deltaX,
+          y: prev.y + deltaY,
+        }));
+      }
+    },
+    [commitTransform]
+  );
+
+  const handleTouchEnd = useCallback(
+    (e) => {
+      const touches = e.touches;
+      if (touches.length === 0) {
+        touchStateRef.current.isPanning = false;
+        touchStateRef.current.isPinching = false;
+        touchStateRef.current.lastPinchDistance = 0;
+        touchStateRef.current.lastPinchMidX = 0;
+        touchStateRef.current.lastPinchMidY = 0;
+
+        if (panRef.current.active) {
+          panRef.current.active = false;
+          momentumRef.current.velocityX = panRef.current.velocityX;
+          momentumRef.current.velocityY = panRef.current.velocityY;
+          momentumRef.current.active = true;
+          runMomentum();
+        }
+      } else if (touches.length === 1) {
+        touchStateRef.current = {
+          isPanning: true,
+          isPinching: false,
+          lastX: touches[0].clientX,
+          lastY: touches[0].clientY,
+          lastPinchDistance: 0,
+          lastPinchMidX: 0,
+          lastPinchMidY: 0,
+        };
+        panRef.current = {
+          active: true,
+          startX: touches[0].clientX,
+          startY: touches[0].clientY,
+          velocityX: 0,
+          velocityY: 0,
+          lastX: touches[0].clientX,
+          lastY: touches[0].clientY,
+          lastTimestamp: performance.now(),
+        };
+      }
+    },
+    [runMomentum]
+  );
 
   useEffect(() => {
     const el = containerRef.current;
@@ -903,61 +978,77 @@ const FamilyTree = memo(function FamilyTree({
       event.preventDefault();
     };
 
-    el.addEventListener("touchstart", handleTouchStartNative, { passive: false });
-    el.addEventListener("touchmove", handleTouchMoveNative, { passive: false });
-    el.addEventListener("touchend", handleTouchEndNative, { passive: false });
-    el.addEventListener("touchcancel", handleTouchEndNative, { passive: false });
-    el.addEventListener("gesturestart", preventGestureZoom, { passive: false });
-    el.addEventListener("gesturechange", preventGestureZoom, { passive: false });
-    el.addEventListener("gestureend", preventGestureZoom, { passive: false });
+    el.addEventListener('touchstart', handleTouchStartNative, {
+      passive: false,
+    });
+    el.addEventListener('touchmove', handleTouchMoveNative, { passive: false });
+    el.addEventListener('touchend', handleTouchEndNative, { passive: false });
+    el.addEventListener('touchcancel', handleTouchEndNative, {
+      passive: false,
+    });
+    el.addEventListener('gesturestart', preventGestureZoom, { passive: false });
+    el.addEventListener('gesturechange', preventGestureZoom, {
+      passive: false,
+    });
+    el.addEventListener('gestureend', preventGestureZoom, { passive: false });
 
     return () => {
-      el.removeEventListener("touchstart", handleTouchStartNative);
-      el.removeEventListener("touchmove", handleTouchMoveNative);
-      el.removeEventListener("touchend", handleTouchEndNative);
-      el.removeEventListener("touchcancel", handleTouchEndNative);
-      el.removeEventListener("gesturestart", preventGestureZoom);
-      el.removeEventListener("gesturechange", preventGestureZoom);
-      el.removeEventListener("gestureend", preventGestureZoom);
+      el.removeEventListener('touchstart', handleTouchStartNative);
+      el.removeEventListener('touchmove', handleTouchMoveNative);
+      el.removeEventListener('touchend', handleTouchEndNative);
+      el.removeEventListener('touchcancel', handleTouchEndNative);
+      el.removeEventListener('gesturestart', preventGestureZoom);
+      el.removeEventListener('gesturechange', preventGestureZoom);
+      el.removeEventListener('gestureend', preventGestureZoom);
     };
   }, [handleTouchEnd, handleTouchMove, handleTouchStart]);
 
   // ===== Focus on Node =====
-  const focusOnNode = useCallback((nodeId) => {
-    const card = containerRef.current?.querySelector(`[data-person-id="${nodeId}"]`);
-    if (!card) return;
+  const focusOnNode = useCallback(
+    (nodeId) => {
+      const card = containerRef.current?.querySelector(
+        `[data-person-id="${nodeId}"]`
+      );
+      if (!card) return;
 
-    const container = containerRef.current;
-    const containerRect = container.getBoundingClientRect();
-    const cardRect = card.getBoundingClientRect();
+      const container = containerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const cardRect = card.getBoundingClientRect();
 
-    const cardCenterX = cardRect.left + cardRect.width / 2 - containerRect.left;
-    const cardCenterY = cardRect.top + cardRect.height / 2 - containerRect.top;
+      const cardCenterX =
+        cardRect.left + cardRect.width / 2 - containerRect.left;
+      const cardCenterY =
+        cardRect.top + cardRect.height / 2 - containerRect.top;
 
-    const containerCenterX = containerRect.width / 2;
-    const containerCenterY = containerRect.height / 2;
+      const containerCenterX = containerRect.width / 2;
+      const containerCenterY = containerRect.height / 2;
 
-    const cur = transformRef.current;
-    const cardTreeX = (cardCenterX - cur.x) / cur.zoom;
-    const cardTreeY = (cardCenterY - cur.y) / cur.zoom;
+      const cur = transformRef.current;
+      const cardTreeX = (cardCenterX - cur.x) / cur.zoom;
+      const cardTreeY = (cardCenterY - cur.y) / cur.zoom;
 
-    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, FOCUS_ZOOM_LEVEL));
+      const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, FOCUS_ZOOM_LEVEL));
 
-    const newX = containerCenterX - cardTreeX * newZoom;
-    const newY = containerCenterY - cardTreeY * newZoom;
+      const newX = containerCenterX - cardTreeX * newZoom;
+      const newY = containerCenterY - cardTreeY * newZoom;
 
-    cancelMomentum();
-    animateTransform(newX, newY, newZoom);
-  }, [animateTransform, cancelMomentum]);
+      cancelMomentum();
+      animateTransform(newX, newY, newZoom);
+    },
+    [animateTransform, cancelMomentum]
+  );
 
   // ===== Double-Click to Fit =====
-  const handleDoubleClick = useCallback((e) => {
-    const card = e.target.closest('[data-person-id]');
-    if (card) {
-      const personId = card.getAttribute('data-person-id');
-      focusOnNode(personId);
-    }
-  }, [focusOnNode]);
+  const handleDoubleClick = useCallback(
+    (e) => {
+      const card = e.target.closest('[data-person-id]');
+      if (card) {
+        const personId = card.getAttribute('data-person-id');
+        focusOnNode(personId);
+      }
+    },
+    [focusOnNode]
+  );
 
   // ===== Focus on selected card =====
   useEffect(() => {
@@ -990,7 +1081,7 @@ const FamilyTree = memo(function FamilyTree({
           e.preventDefault();
           cancelMomentum();
           cancelAnimation();
-          commitTransform(prev => ({
+          commitTransform((prev) => ({
             ...prev,
             x: prev.x - e.deltaX,
             y: prev.y - e.deltaY,
@@ -1002,7 +1093,7 @@ const FamilyTree = memo(function FamilyTree({
           e.stopPropagation();
           cancelMomentum();
           cancelAnimation();
-          commitTransform(prev => ({
+          commitTransform((prev) => ({
             ...prev,
             x: prev.x - e.deltaX,
             y: prev.y - e.deltaY,
@@ -1024,9 +1115,9 @@ const FamilyTree = memo(function FamilyTree({
       }
     };
 
-    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener('wheel', onWheel, { passive: false });
     return () => {
-      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener('wheel', onWheel);
       if (wheelTimeout) cancelAnimationFrame(wheelTimeout);
     };
   }, [zoomAtPoint, cancelMomentum, cancelAnimation, commitTransform]);
@@ -1034,13 +1125,19 @@ const FamilyTree = memo(function FamilyTree({
   // ===== Zoom Buttons =====
   const zoomIn = () => {
     const cur = transformRef.current;
-    const newZoom = Math.min(MAX_ZOOM, Math.round((cur.zoom + ZOOM_STEP) * 100) / 100);
+    const newZoom = Math.min(
+      MAX_ZOOM,
+      Math.round((cur.zoom + ZOOM_STEP) * 100) / 100
+    );
     animateTransform(cur.x, cur.y, newZoom);
   };
 
   const zoomOut = () => {
     const cur = transformRef.current;
-    const newZoom = Math.max(MIN_ZOOM, Math.round((cur.zoom - ZOOM_STEP) * 100) / 100);
+    const newZoom = Math.max(
+      MIN_ZOOM,
+      Math.round((cur.zoom - ZOOM_STEP) * 100) / 100
+    );
     animateTransform(cur.x, cur.y, newZoom);
   };
 
@@ -1085,13 +1182,13 @@ const FamilyTree = memo(function FamilyTree({
       const lines = [];
       dualConnections.forEach((conn) => {
         const wifeEl = treeEl.querySelector(
-          `[data-person-id="${conn.wifeId}"]`,
+          `[data-person-id="${conn.wifeId}"]`
         );
         const parentUnitEl = treeEl.querySelector(
-          `[data-unit-id="${conn.parentUnitId}"]`,
+          `[data-unit-id="${conn.parentUnitId}"]`
         );
         const parentCoupleEl = parentUnitEl?.querySelector(
-          '[data-unit-couple="true"]',
+          '[data-unit-couple="true"]'
         );
         if (!wifeEl || !parentCoupleEl) return;
         const wifeRect = wifeEl.getBoundingClientRect();
@@ -1110,10 +1207,10 @@ const FamilyTree = memo(function FamilyTree({
 
     const timer = setTimeout(update, 50); // Small delay to ensure layout is ready
     const onResize = () => update();
-    window.addEventListener("resize", onResize);
+    window.addEventListener('resize', onResize);
     return () => {
       clearTimeout(timer);
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener('resize', onResize);
     };
   }, [dualConnections]);
 
@@ -1123,13 +1220,13 @@ const FamilyTree = memo(function FamilyTree({
       if (!treeRef.current) return;
       const { width: paperW, height: paperH } = PAPER_SIZES[exportSize];
       setExporting(true);
-      setExportError("");
+      setExportError('');
       const treeEl = treeRef.current;
       const savedTransform = treeEl.style.transform;
       const savedTransformOrigin = treeEl.style.transformOrigin;
       try {
-        treeEl.style.transform = "none";
-        treeEl.style.transformOrigin = "top left";
+        treeEl.style.transform = 'none';
+        treeEl.style.transformOrigin = 'top left';
 
         await new Promise((r) => requestAnimationFrame(r));
         await new Promise((r) => requestAnimationFrame(r));
@@ -1148,21 +1245,21 @@ const FamilyTree = memo(function FamilyTree({
         };
 
         let dataUrl;
-        if (format === "png") {
+        if (format === 'png') {
           dataUrl = await toPng(treeEl, opts);
         } else {
           dataUrl = await toSvg(treeEl, opts);
         }
         downloadDataUrl(dataUrl, `silsilah-baniakhzab-${exportSize}.${format}`);
       } catch (err) {
-        setExportError(err instanceof Error ? err.message : "Gagal ekspor.");
+        setExportError(err instanceof Error ? err.message : 'Gagal ekspor.');
       } finally {
         treeEl.style.transform = savedTransform;
         treeEl.style.transformOrigin = savedTransformOrigin;
         setExporting(false);
       }
     },
-    [exportSize],
+    [exportSize]
   );
 
   // ===== Filter Context =====
@@ -1221,7 +1318,7 @@ const FamilyTree = memo(function FamilyTree({
   const pairOptions = React.useMemo(() => {
     if (!filterContext) return [];
     const base = [
-      { value: "", label: "Semua pasangan" },
+      { value: '', label: 'Semua pasangan' },
       ...filterContext.spousePairs.map((p) => ({
         value: p.key,
         label: p.label,
@@ -1236,7 +1333,7 @@ const FamilyTree = memo(function FamilyTree({
     let baseVisible = null;
 
     if (pairKey) {
-      const [a, b] = pairKey.split(":");
+      const [a, b] = pairKey.split(':');
       const focusIds = [a, b].filter(Boolean);
       const result = new Set(focusIds);
 
@@ -1263,10 +1360,10 @@ const FamilyTree = memo(function FamilyTree({
         });
       };
 
-      if (direction === "down" || direction === "both") {
+      if (direction === 'down' || direction === 'both') {
         focusIds.forEach((id) => visitDesc(id));
       }
-      if (direction === "up" || direction === "both") {
+      if (direction === 'up' || direction === 'both') {
         focusIds.forEach((id) => visitAnc(id));
       }
 
@@ -1280,7 +1377,7 @@ const FamilyTree = memo(function FamilyTree({
       baseVisible = withSpouses;
     }
 
-    if (generationFilter !== "all") {
+    if (generationFilter !== 'all') {
       const genNum = Number(generationFilter);
       const filtered = new Set();
       const source = baseVisible || new Set(Array.from(persons.keys()));
@@ -1296,8 +1393,8 @@ const FamilyTree = memo(function FamilyTree({
   }, [filterContext, pairKey, direction, generationFilter]);
 
   const generationSelectOptions = React.useMemo(() => {
-    if (!filterContext) return [{ value: "all", label: "Semua" }];
-    const base = [{ value: "all", label: "Semua" }];
+    if (!filterContext) return [{ value: 'all', label: 'Semua' }];
+    const base = [{ value: 'all', label: 'Semua' }];
     filterContext.generationOptions.forEach((g) => {
       base.push({ value: String(g), label: `G${g}` });
     });
@@ -1305,22 +1402,22 @@ const FamilyTree = memo(function FamilyTree({
   }, [filterContext]);
 
   const filterStatusLabel = React.useMemo(() => {
-    if (!filterContext) return "Semua anggota keluarga";
+    if (!filterContext) return 'Semua anggota keluarga';
     const parts = [];
     if (pairKey) {
       const pair = filterContext.spousePairs.find((p) => p.key === pairKey);
       if (pair) parts.push(`Pasangan: ${pair.label}`);
     }
     if (direction && pairKey) {
-      if (direction === "down") parts.push("Arah: Keturunan");
-      else if (direction === "up") parts.push("Arah: Leluhur");
-      else parts.push("Arah: Leluhur & keturunan");
+      if (direction === 'down') parts.push('Arah: Keturunan');
+      else if (direction === 'up') parts.push('Arah: Leluhur');
+      else parts.push('Arah: Leluhur & keturunan');
     }
-    if (generationFilter !== "all") {
+    if (generationFilter !== 'all') {
       parts.push(`Generasi: G${generationFilter}`);
     }
-    if (parts.length === 0) return "Semua anggota keluarga";
-    return parts.join(" · ");
+    if (parts.length === 0) return 'Semua anggota keluarga';
+    return parts.join(' · ');
   }, [filterContext, pairKey, direction, generationFilter]);
 
   const personOptions = React.useMemo(() => {
@@ -1329,7 +1426,7 @@ const FamilyTree = memo(function FamilyTree({
     persons.forEach((p) => {
       arr.push({ id: p.id, name: p.name || p.id });
     });
-    arr.sort((a, b) => a.name.localeCompare(b.name, "id"));
+    arr.sort((a, b) => a.name.localeCompare(b.name, 'id'));
     return arr;
   }, [persons]);
 
@@ -1424,7 +1521,12 @@ const FamilyTree = memo(function FamilyTree({
   // ===== Relation Path Visually Highlight Effect =====
   useEffect(() => {
     const treeEl = treeRef.current;
-    if (!treeEl || !relationResult || !relationResult.paths || relationResult.paths.length === 0) {
+    if (
+      !treeEl ||
+      !relationResult ||
+      !relationResult.paths ||
+      relationResult.paths.length === 0
+    ) {
       setPathLines([]);
       return;
     }
@@ -1433,21 +1535,27 @@ const FamilyTree = memo(function FamilyTree({
       const treeRect = treeEl.getBoundingClientRect();
       const zoom = transformRef.current.zoom || 1;
       const shortestPath = relationResult.paths[0]; // highlight shortest path only
-      if (!shortestPath || !shortestPath.steps || shortestPath.steps.length === 0) {
+      if (
+        !shortestPath ||
+        !shortestPath.steps ||
+        shortestPath.steps.length === 0
+      ) {
         setPathLines([]);
         return;
       }
 
       const connectorSegments = [];
-      const connectorLineElements = treeEl.querySelectorAll(".fu-wrapper svg line");
+      const connectorLineElements = treeEl.querySelectorAll(
+        '.fu-wrapper svg line'
+      );
       connectorLineElements.forEach((lineEl) => {
         const svgEl = lineEl.ownerSVGElement;
         if (!svgEl) return;
 
-        const x1 = Number(lineEl.getAttribute("x1"));
-        const y1 = Number(lineEl.getAttribute("y1"));
-        const x2 = Number(lineEl.getAttribute("x2"));
-        const y2 = Number(lineEl.getAttribute("y2"));
+        const x1 = Number(lineEl.getAttribute('x1'));
+        const y1 = Number(lineEl.getAttribute('y1'));
+        const x2 = Number(lineEl.getAttribute('x2'));
+        const y2 = Number(lineEl.getAttribute('y2'));
         if (![x1, y1, x2, y2].every(Number.isFinite)) return;
 
         const svgRect = svgEl.getBoundingClientRect();
@@ -1466,44 +1574,52 @@ const FamilyTree = memo(function FamilyTree({
       const lines = [];
 
       shortestPath.steps.forEach((step, i) => {
-        const fromEl = treeEl.querySelector(`[data-person-id="${step.fromId}"]`);
+        const fromEl = treeEl.querySelector(
+          `[data-person-id="${step.fromId}"]`
+        );
         const toEl = treeEl.querySelector(`[data-person-id="${step.toId}"]`);
         if (!fromEl || !toEl) return;
 
         const fromBox = getNodeBoxInTreeSpace(fromEl, treeRect, zoom);
         const toBox = getNodeBoxInTreeSpace(toEl, treeRect, zoom);
-        const anchorCandidates = getRelationAnchorCandidates(step, fromBox, toBox);
+        const anchorCandidates = getRelationAnchorCandidates(
+          step,
+          fromBox,
+          toBox
+        );
 
         const fromMatch = findNearestGraphNodeForCandidates(
           connectorGraph.nodes,
           anchorCandidates.from,
-          CONNECTOR_NEAREST_MAX_DISTANCE,
+          CONNECTOR_NEAREST_MAX_DISTANCE
         );
         const toMatch = findNearestGraphNodeForCandidates(
           connectorGraph.nodes,
           anchorCandidates.to,
-          CONNECTOR_NEAREST_MAX_DISTANCE,
+          CONNECTOR_NEAREST_MAX_DISTANCE
         );
         const bestRoute = findBestConnectorRoute(
           connectorGraph,
           anchorCandidates.from,
           anchorCandidates.to,
-          CONNECTOR_NEAREST_MAX_DISTANCE,
+          CONNECTOR_NEAREST_MAX_DISTANCE
         );
 
         const fallbackStart =
-          bestRoute?.fromMatch?.point || fromMatch?.point || anchorCandidates.from[0];
+          bestRoute?.fromMatch?.point ||
+          fromMatch?.point ||
+          anchorCandidates.from[0];
         const fallbackEnd =
           bestRoute?.toMatch?.point || toMatch?.point || anchorCandidates.to[0];
 
-        let d = "";
+        let d = '';
         if (bestRoute?.route && bestRoute.route.length > 0) {
           d = bestRoute.route
             .map((nodeIndex, pathIndex) => {
               const p = connectorGraph.nodes[nodeIndex];
-              return `${pathIndex === 0 ? "M" : "L"} ${p.x} ${p.y}`;
+              return `${pathIndex === 0 ? 'M' : 'L'} ${p.x} ${p.y}`;
             })
-            .join(" ");
+            .join(' ');
         }
 
         if (!d) {
@@ -1524,22 +1640,28 @@ const FamilyTree = memo(function FamilyTree({
       rafId = requestAnimationFrame(update);
     }, 50);
     const onResize = () => update();
-    window.addEventListener("resize", onResize);
+    window.addEventListener('resize', onResize);
     return () => {
       clearTimeout(timer);
       if (rafId) cancelAnimationFrame(rafId);
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener('resize', onResize);
     };
   }, [relationResult, filteredRoots]);
 
   // ===== Initial Auto-Center =====
   useEffect(() => {
-    if (initialFittedRef.current || !filteredRoots || filteredRoots.length === 0) return;
+    if (
+      initialFittedRef.current ||
+      !filteredRoots ||
+      filteredRoots.length === 0
+    )
+      return;
 
     let rafId = null;
 
     const checkAndFit = () => {
-      if (initialFittedRef.current || !containerRef.current || !treeRef.current) return;
+      if (initialFittedRef.current || !containerRef.current || !treeRef.current)
+        return;
 
       const container = containerRef.current;
       const tree = treeRef.current;
@@ -1551,7 +1673,8 @@ const FamilyTree = memo(function FamilyTree({
 
       if (treeW === 0 || treeH === 0) {
         // In JSDOM (testing), dimensions are always 0. Don't loop forever.
-        if (typeof process !== "undefined" && process.env?.NODE_ENV === "test") return;
+        if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test')
+          return;
         // Not ready yet, check again next frame
         rafId = requestAnimationFrame(checkAndFit);
         return;
@@ -1564,7 +1687,7 @@ const FamilyTree = memo(function FamilyTree({
       const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, fitZoom));
 
       // Calculate top-center position with top-left transform origin.
-      const newX = (containerW / 2) - (treeW / 2) * newZoom;
+      const newX = containerW / 2 - (treeW / 2) * newZoom;
       const newY = 40; // a little top padding
 
       initialFittedRef.current = true;
@@ -1581,13 +1704,13 @@ const FamilyTree = memo(function FamilyTree({
   }, [filteredRoots, commitTransform]);
 
   const describeStep = (step) => {
-    if (!step.kind) return "Terhubung";
-    if (step.kind === "spouse") return "Pasangan";
-    if (step.kind === "parent") {
-      if (step.dir === "to_parent") return "Anak → orang tua";
-      if (step.dir === "to_child") return "Orang tua → anak";
+    if (!step.kind) return 'Terhubung';
+    if (step.kind === 'spouse') return 'Pasangan';
+    if (step.kind === 'parent') {
+      if (step.dir === 'to_parent') return 'Anak → orang tua';
+      if (step.dir === 'to_child') return 'Orang tua → anak';
     }
-    return "Relasi";
+    return 'Relasi';
   };
 
   const getPersonName = (id) => {
@@ -1618,7 +1741,9 @@ const FamilyTree = memo(function FamilyTree({
             >
               −
             </button>
-            <span className="ft-zoom-label">{Math.round(transform.zoom * 100)}%</span>
+            <span className="ft-zoom-label">
+              {Math.round(transform.zoom * 100)}%
+            </span>
             <button
               type="button"
               className="ft-zoom-btn"
@@ -1650,15 +1775,15 @@ const FamilyTree = memo(function FamilyTree({
             <button
               type="button"
               className="chart-toolbar-button"
-              onClick={() => handleExport("png")}
+              onClick={() => handleExport('png')}
               disabled={exporting}
             >
-              {exporting ? "Mengekspor…" : "Export PNG"}
+              {exporting ? 'Mengekspor…' : 'Export PNG'}
             </button>
             <button
               type="button"
               className="chart-toolbar-button secondary"
-              onClick={() => handleExport("svg")}
+              onClick={() => handleExport('svg')}
               disabled={exporting}
             >
               Export SVG
@@ -1667,28 +1792,28 @@ const FamilyTree = memo(function FamilyTree({
           {filterContext && (
             <button
               type="button"
-              className={`ft-toolbar-toggle-btn${showFilterPanel ? " active" : ""}`}
+              className={`ft-toolbar-toggle-btn${showFilterPanel ? ' active' : ''}`}
               onClick={() => setShowFilterPanel((v) => !v)}
             >
-              ⚙ Filter{(pairKey || generationFilter !== "all") ? " ●" : ""}
+              ⚙ Filter{pairKey || generationFilter !== 'all' ? ' ●' : ''}
             </button>
           )}
           <button
             type="button"
-            className={`ft-toolbar-toggle-btn${showRelationPanel ? " active" : ""}`}
+            className={`ft-toolbar-toggle-btn${showRelationPanel ? ' active' : ''}`}
             onClick={() => setShowRelationPanel((v) => !v)}
           >
             ↔ Hubungan
           </button>
-          {(pairKey || generationFilter !== "all") && (
+          {(pairKey || generationFilter !== 'all') && (
             <button
               type="button"
               className="chart-toolbar-button secondary"
               style={{ flexShrink: 0 }}
               onClick={() => {
-                setPairKey("");
-                setGenerationFilter("all");
-                setDirection("both");
+                setPairKey('');
+                setGenerationFilter('all');
+                setDirection('both');
               }}
             >
               Reset filter
@@ -1728,7 +1853,10 @@ const FamilyTree = memo(function FamilyTree({
               options={pairOptions}
               placeholder="Semua pasangan"
             />
-            <label className="chart-toolbar-label" htmlFor="ft-filter-direction">
+            <label
+              className="chart-toolbar-label"
+              htmlFor="ft-filter-direction"
+            >
               Arah
             </label>
             <SearchableSelect
@@ -1738,7 +1866,10 @@ const FamilyTree = memo(function FamilyTree({
               options={DIRECTION_OPTIONS}
               placeholder="Pilih arah"
             />
-            <label className="chart-toolbar-label" htmlFor="ft-filter-generation">
+            <label
+              className="chart-toolbar-label"
+              htmlFor="ft-filter-generation"
+            >
               Generasi
             </label>
             <SearchableSelect
@@ -1760,7 +1891,7 @@ const FamilyTree = memo(function FamilyTree({
         <div
           ref={relationRef}
           className="ft-relation-panel"
-          style={{ width: "fit-content" }}
+          style={{ width: 'fit-content' }}
         >
           <div className="ft-relation-header">
             <span className="chart-toolbar-label">
@@ -1784,7 +1915,7 @@ const FamilyTree = memo(function FamilyTree({
                 value={relationAId}
                 onChange={(val) => setRelationAId(val)}
                 options={[
-                  { value: "", label: "Pilih entitas…" },
+                  { value: '', label: 'Pilih entitas…' },
                   ...personOptions.map((p) => ({
                     value: p.id,
                     label: p.name,
@@ -1802,7 +1933,7 @@ const FamilyTree = memo(function FamilyTree({
                 value={relationBId}
                 onChange={(val) => setRelationBId(val)}
                 options={[
-                  { value: "", label: "Pilih entitas…" },
+                  { value: '', label: 'Pilih entitas…' },
                   ...personOptions.map((p) => ({
                     value: p.id,
                     label: p.name,
@@ -1843,10 +1974,10 @@ const FamilyTree = memo(function FamilyTree({
                 <button
                   type="button"
                   className="chart-toolbar-button secondary"
-                  style={{ marginLeft: "auto" }}
+                  style={{ marginLeft: 'auto' }}
                   onClick={() => {
-                    setRelationAId("");
-                    setRelationBId("");
+                    setRelationAId('');
+                    setRelationBId('');
                   }}
                 >
                   Clear
@@ -1866,11 +1997,11 @@ const FamilyTree = memo(function FamilyTree({
             ) : (
               <div className="ft-relation-paths">
                 <div className="ft-relation-summary">
-                  {relationResult.paths.length} jalur ditemukan · jarak terpendek{" "}
-                  {relationResult.shortestLength} langkah
+                  {relationResult.paths.length} jalur ditemukan · jarak
+                  terpendek {relationResult.shortestLength} langkah
                 </div>
                 {relationResult.paths.map((p, idx) => (
-                  <div key={p.nodes.join("->")} className="ft-relation-path">
+                  <div key={p.nodes.join('->')} className="ft-relation-path">
                     <div className="ft-relation-path-header">
                       <span>
                         Jalur {idx + 1} · {p.length} langkah
@@ -1884,7 +2015,9 @@ const FamilyTree = memo(function FamilyTree({
                         {getPersonName(p.nodes[0])}
                       </div>
                       {p.steps.map((step, i) => (
-                        <React.Fragment key={`${step.fromId}-${step.toId}-${i}`}>
+                        <React.Fragment
+                          key={`${step.fromId}-${step.toId}-${i}`}
+                        >
                           <div className="ft-relation-edge">
                             {describeStep(step)}
                           </div>
