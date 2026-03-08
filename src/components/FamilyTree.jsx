@@ -453,6 +453,7 @@ const FamilyTree = memo(
     // Transform is kept in refs and applied directly to DOM to avoid full tree re-render each gesture frame.
     const transformRef = useRef({ x: 0, y: 0, zoom: 0.5 });
     const panzoomRef = useRef(null);
+    const focusAnimRef = useRef(null);
     const transformIdleTimerRef = useRef(null);
     const initialFittedRef = useRef(false);
     const [isTransforming, setIsTransforming] = useState(false);
@@ -689,6 +690,10 @@ const FamilyTree = memo(
       panzoom.on('transform', onTransform);
 
       return () => {
+        if (focusAnimRef.current) {
+          cancelAnimationFrame(focusAnimRef.current);
+          focusAnimRef.current = null;
+        }
         panzoom.off('transform', onTransform);
         panzoom.dispose();
         if (panzoomRef.current === panzoom) {
@@ -711,15 +716,53 @@ const FamilyTree = memo(
           zoom: newZoom,
         });
         const panzoom = panzoomRef.current;
-        if (panzoom) {
-          const rect = containerRef.current?.getBoundingClientRect();
-          const focalX = rect ? rect.left + rect.width / 2 : 0;
-          const focalY = rect ? rect.top + rect.height / 2 : 0;
-          panzoom.smoothZoomAbs(focalX, focalY, normalized.zoom);
-          panzoom.smoothMoveTo(normalized.x, normalized.y);
+        if (!panzoom) {
+          commitTransform(normalized);
           return;
         }
-        commitTransform(normalized);
+
+        // Cancel any ongoing focus animation.
+        if (focusAnimRef.current) {
+          cancelAnimationFrame(focusAnimRef.current);
+          focusAnimRef.current = null;
+        }
+
+        const start = { ...transformRef.current };
+        const dx = normalized.x - start.x;
+        const dy = normalized.y - start.y;
+        const dz = normalized.zoom - start.zoom;
+
+        // Skip animation when delta is negligible.
+        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(dz) < 0.001) {
+          panzoom.zoomAbs(0, 0, normalized.zoom);
+          panzoom.moveTo(normalized.x, normalized.y);
+          return;
+        }
+
+        const duration = 300;
+        const startTime = performance.now();
+
+        const step = (now) => {
+          const elapsed = now - startTime;
+          const progress = Math.min(1, elapsed / duration);
+          // Ease-out cubic
+          const t = 1 - Math.pow(1 - progress, 3);
+
+          const curX = start.x + dx * t;
+          const curY = start.y + dy * t;
+          const curZoom = start.zoom + dz * t;
+
+          panzoom.zoomAbs(0, 0, curZoom);
+          panzoom.moveTo(curX, curY);
+
+          if (progress < 1) {
+            focusAnimRef.current = requestAnimationFrame(step);
+          } else {
+            focusAnimRef.current = null;
+          }
+        };
+
+        focusAnimRef.current = requestAnimationFrame(step);
       },
       [normalizeTransform, commitTransform]
     );

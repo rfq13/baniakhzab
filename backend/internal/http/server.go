@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -370,7 +372,12 @@ func (s *Server) handleGetPerson(w http.ResponseWriter, r *http.Request) {
 
 	person, err := s.store.Persons.GetByID(ctx, id)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "person not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "person not found")
+			return
+		}
+		s.logger.Error("get person failed", "id", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "failed to get person")
 		return
 	}
 
