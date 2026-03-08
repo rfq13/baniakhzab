@@ -4,12 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/baniakhzab/backend/internal/db"
 	"github.com/tmc/langchaingo/callbacks"
 	"github.com/tmc/langchaingo/tools"
 )
+
+// sqlQueryTimeout is the maximum execution time for LLM-generated SQL queries.
+const sqlQueryTimeout = 3 * time.Second
 
 // normalizeIslamicName maps common Indonesian/Islamic name prefix variants to canonical forms
 func normalizeIslamicName(name string) string {
@@ -284,23 +289,31 @@ func (t AskDatabaseTool) Call(ctx context.Context, input string) (string, error)
 
 	res, err := t.client.GenerateDatabaseSQL(ctx, payload.Question)
 	if err != nil {
-		return fmt.Sprintf("Gagal generate SQL: %v", err), nil
+		return "Gagal generate SQL dari pertanyaan.", nil
 	}
 
-	sqlStr := strings.TrimSpace(res.SQL)
-	if !strings.HasPrefix(strings.ToUpper(sqlStr), "SELECT") && !strings.HasPrefix(strings.ToUpper(sqlStr), "WITH") {
-		return "Hanya query SELECT yang diperbolehkan demi keamanan.", nil
+	// Validate the LLM-generated SQL through the security guard
+	guardCfg := DefaultSQLGuardConfig()
+	guard := ValidateSQL(res.SQL, guardCfg)
+	if !guard.Allowed {
+		log.Printf("[SQLGuard] BLOCKED query for question=%q reason=%s sql=%q", payload.Question, guard.Reason, res.SQL)
+		return fmt.Sprintf("Query ditolak oleh sistem keamanan: %s. Coba gunakan tool lain seperti SearchPerson atau GetFilteredRelatives.", guard.Reason), nil
 	}
 
-	rows, err := t.store.DB.QueryContext(ctx, sqlStr)
+	// Execute with a strict timeout to prevent slow/expensive queries
+	queryCtx, cancel := context.WithTimeout(ctx, sqlQueryTimeout)
+	defer cancel()
+
+	rows, err := t.store.DB.QueryContext(queryCtx, guard.SafeSQL)
 	if err != nil {
-		return fmt.Sprintf("Gagal mengeksekusi referensi query (%s): %v. Penjelasan LLM: %s", sqlStr, err, res.Explanation), nil
+		log.Printf("[SQLGuard] EXEC_ERROR question=%q sql=%q err=%v", payload.Question, guard.SafeSQL, err)
+		return "Gagal mengeksekusi query database. Coba ulangi pertanyaan dengan lebih spesifik.", nil
 	}
 	defer rows.Close()
 
 	cols, err := rows.Columns()
 	if err != nil {
-		return "", err
+		return "Gagal membaca hasil query.", nil
 	}
 
 	var results []map[string]any
@@ -312,7 +325,7 @@ func (t AskDatabaseTool) Call(ctx context.Context, input string) (string, error)
 		}
 
 		if err := rows.Scan(columnPointers...); err != nil {
-			return "", err
+			return "Gagal membaca baris hasil query.", nil
 		}
 
 		rowMap := make(map[string]any)
@@ -328,8 +341,10 @@ func (t AskDatabaseTool) Call(ctx context.Context, input string) (string, error)
 		results = append(results, rowMap)
 	}
 
+	log.Printf("[SQLGuard] OK question=%q rows=%d sql=%q", payload.Question, len(results), guard.SafeSQL)
+
 	out, _ := json.Marshal(results)
-	return fmt.Sprintf("Hasil query:\n%s\nPenjelasan Query yang digunakan LLM: %s", string(out), res.Explanation), nil
+	return fmt.Sprintf("Hasil query:\n%s\nPenjelasan: %s", string(out), res.Explanation), nil
 }
 
 // GetFilteredRelativesTool fetches a person's relatives for a given relation type
