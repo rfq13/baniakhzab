@@ -358,21 +358,89 @@ func (s *Server) handleParentCouples(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCreatePerson(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var input db.PersonInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	type createPersonRequest struct {
+		db.PersonInput
+		Spouse   *db.PersonInput `json:"spouse,omitempty"`
+		SpouseID *string         `json:"spouse_id,omitempty"`
+	}
+
+	var req createPersonRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	if input.FullName == "" {
+	if req.FullName == "" {
 		writeError(w, http.StatusBadRequest, "full_name is required")
 		return
 	}
 
-	person, err := s.store.Persons.Insert(ctx, input)
+	// If SpouseID is provided, add it to the main person's initial spouse_ids
+	if req.SpouseID != nil && *req.SpouseID != "" {
+		req.SpouseIDs = append(req.SpouseIDs, *req.SpouseID)
+	}
+
+	// 1. Create the main person
+	person, err := s.store.Persons.Insert(ctx, req.PersonInput)
 	if err != nil {
 		s.logger.Error("create person failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "failed to create person")
 		return
+	}
+
+	// 2. Handle Spouse (Existing)
+	if req.SpouseID != nil && *req.SpouseID != "" {
+		existingSpouse, err := s.store.Persons.GetByID(ctx, *req.SpouseID)
+		if err != nil {
+			s.logger.Error("get existing spouse failed", "id", *req.SpouseID, "error", err)
+		} else if existingSpouse != nil {
+			// Link back from existing person to new person
+			existingSpouse.SpouseIDs = append(existingSpouse.SpouseIDs, person.ID)
+			_, err = s.store.Persons.Update(ctx, existingSpouse.ID, db.PersonInput{
+				FullName:   existingSpouse.FullName,
+				Gender:     existingSpouse.Gender,
+				WANumber:   existingSpouse.WANumber,
+				Alamat:     existingSpouse.Alamat,
+				URL:        existingSpouse.URL,
+				ImgURL:     existingSpouse.ImgURL,
+				FatherID:   existingSpouse.FatherID,
+				MotherID:   existingSpouse.MotherID,
+				SpouseIDs:  existingSpouse.SpouseIDs,
+				Generation: existingSpouse.Generation,
+			})
+			if err != nil {
+				s.logger.Error("update existing spouse link failed", "error", err)
+			}
+		}
+	} else if req.Spouse != nil && req.Spouse.FullName != "" {
+		// 3. Handle Spouse (New / Mantu)
+		req.Spouse.FatherID = nil
+		req.Spouse.MotherID = nil
+		req.Spouse.SpouseIDs = []string{person.ID}
+
+		spouse, err := s.store.Persons.Insert(ctx, *req.Spouse)
+		if err != nil {
+			s.logger.Error("create spouse failed", "error", err)
+			writeJSON(w, http.StatusCreated, person)
+			return
+		}
+
+		// Update the main person to link back to the NEW spouse
+		person.SpouseIDs = append(person.SpouseIDs, spouse.ID)
+		_, err = s.store.Persons.Update(ctx, person.ID, db.PersonInput{
+			FullName:   person.FullName,
+			Gender:     person.Gender,
+			WANumber:   person.WANumber,
+			Alamat:     person.Alamat,
+			URL:        person.URL,
+			ImgURL:     person.ImgURL,
+			FatherID:   person.FatherID,
+			MotherID:   person.MotherID,
+			SpouseIDs:  person.SpouseIDs,
+			Generation: person.Generation,
+		})
+		if err != nil {
+			s.logger.Error("link new spouse failed", "error", err)
+		}
 	}
 
 	writeJSON(w, http.StatusCreated, person)
@@ -822,8 +890,16 @@ func (s *Server) handleSyncImgURLCommand(ctx context.Context, waNumber string) e
 		return err
 	}
 
+	_ = s.wa.SendText(ctx, waNumber, fmt.Sprintf("Mulai sync gambar profil... (%d entri)", len(entries)))
+
+	uploadsDir := filepath.Join(".", "uploads")
+	_ = os.MkdirAll(uploadsDir, 0o755)
+
+	dlClient := &http.Client{Timeout: 15 * time.Second}
+
 	updated := 0
 	skipped := 0
+	dlFailed := 0
 	for _, e := range entries {
 		if e.ID == "" || e.ImgURL == "" {
 			skipped++
@@ -833,15 +909,62 @@ func (s *Server) handleSyncImgURLCommand(ctx context.Context, waNumber string) e
 			skipped++
 			continue
 		}
-		if err := s.store.Persons.UpdateImgURL(ctx, e.ID, e.ImgURL); err != nil {
+
+		// Download the image from remote URL
+		resp, err := dlClient.Get(e.ImgURL)
+		if err != nil {
+			s.logger.Error("sync_img_url: download failed", "id", e.ID, "url", e.ImgURL, "error", err)
+			dlFailed++
+			continue
+		}
+
+		ct := resp.Header.Get("Content-Type")
+		ext, ok := allowedImageTypes[ct]
+		if !ok {
+			// Fallback: guess from URL
+			switch {
+			case strings.HasSuffix(strings.ToLower(e.ImgURL), ".png"):
+				ext = ".png"
+			case strings.HasSuffix(strings.ToLower(e.ImgURL), ".webp"):
+				ext = ".webp"
+			default:
+				ext = ".jpg"
+			}
+		}
+
+		filename := fmt.Sprintf("sync-%s-%s%s", e.ID, randomShort(), ext)
+		destPath := filepath.Join(uploadsDir, filename)
+
+		dst, err := os.Create(destPath)
+		if err != nil {
+			resp.Body.Close()
+			s.logger.Error("sync_img_url: create file failed", "id", e.ID, "error", err)
+			dlFailed++
+			continue
+		}
+
+		_, copyErr := io.Copy(dst, resp.Body)
+		dst.Close()
+		resp.Body.Close()
+
+		if copyErr != nil {
+			os.Remove(destPath)
+			s.logger.Error("sync_img_url: write file failed", "id", e.ID, "error", copyErr)
+			dlFailed++
+			continue
+		}
+
+		localPath := "/uploads/" + filename
+		if err := s.store.Persons.UpdateImgURL(ctx, e.ID, localPath); err != nil {
 			s.logger.Error("sync_img_url: failed to update person", "id", e.ID, "error", err)
-			skipped++
+			os.Remove(destPath)
+			dlFailed++
 			continue
 		}
 		updated++
 	}
 
-	msg := fmt.Sprintf("Sync gambar profil selesai.\n\nBerhasil diperbarui: %d\nDilewati: %d\nTotal data: %d", updated, skipped, len(entries))
+	msg := fmt.Sprintf("Sync gambar profil selesai.\n\nBerhasil: %d\nDilewati (noimg/kosong): %d\nGagal download: %d\nTotal data: %d", updated, skipped, dlFailed, len(entries))
 	if err := s.wa.SendText(ctx, waNumber, msg); err != nil {
 		s.logger.Error("sync_img_url: failed to send summary", "error", err)
 	}

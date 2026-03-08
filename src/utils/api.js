@@ -1,6 +1,26 @@
 const API_BASE = '/api/v1';
 
 /**
+ * Fetch all persons (with optional search query)
+ */
+export async function fetchPersons(search = '') {
+  const url = new URL(`${window.location.origin}${API_BASE}/persons`);
+  if (search) {
+    url.searchParams.set('q', search);
+  }
+  url.searchParams.set('limit', '1000'); // Increase limit for searching
+
+  const res = await fetch(url.toString(), {
+    credentials: 'include',
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || 'Gagal memuat daftar anggota.');
+  }
+  return res.json();
+}
+
+/**
  * Fetch parent couples from API
  */
 export async function fetchParentCouples() {
