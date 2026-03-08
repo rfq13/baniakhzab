@@ -175,6 +175,7 @@ export default function App() {
               onSelectPerson={setSelectedId}
               selectedId={selectedId}
               showControls={showControls}
+              onAddPerson={() => setShowAddModal(true)}
             />
           )}
 
@@ -203,6 +204,13 @@ export default function App() {
               setShowEditPersonModal(false);
               refresh();
             }}
+          />
+        )}
+        {showAddModal && (
+          <AddPersonModal
+            isOpen={showAddModal}
+            onClose={() => setShowAddModal(false)}
+            onSuccess={handleAddPersonSuccess}
           />
         )}
       </main>

@@ -434,6 +434,7 @@ const FamilyTree = memo(function FamilyTree({
   onSelectPerson,
   selectedId,
   showControls = true,
+  onAddPerson,
 }) {
   const containerRef = useRef(null);
   const treeRef = useRef(null);
@@ -554,6 +555,8 @@ const FamilyTree = memo(function FamilyTree({
     spouse: true,
   });
   const [relationExporting, setRelationExporting] = useState(false);
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [showRelationPanel, setShowRelationPanel] = useState(false);
   const relationRef = useRef(null);
 
   // ===== Animation Helpers =====
@@ -728,7 +731,7 @@ const FamilyTree = memo(function FamilyTree({
   const handleTouchStart = useCallback((e) => {
     const target = e.target instanceof Element ? e.target : null;
     // Only handled if touching the canvas, preventing interference with UI controls
-    if (target?.closest('.ft-toolbar') || target?.closest('.ft-relation-panel')) return;
+    if (target?.closest('.ft-toolbar') || target?.closest('.ft-relation-panel') || target?.closest('.ft-filter-panel')) return;
 
     cancelMomentum();
     cancelAnimation();
@@ -1662,69 +1665,98 @@ const FamilyTree = memo(function FamilyTree({
             </button>
           </div>
           {filterContext && (
-            <div className="chart-toolbar-group">
-              <label className="chart-toolbar-label" htmlFor="ft-filter-pair">
-                Pasangan
-              </label>
-              <SearchableSelect
-                id="ft-filter-pair"
-                value={pairKey}
-                onChange={(val) => setPairKey(val)}
-                options={pairOptions}
-                placeholder="Semua pasangan"
-              />
-              <label
-                className="chart-toolbar-label"
-                htmlFor="ft-filter-direction"
-              >
-                Arah
-              </label>
-              <SearchableSelect
-                id="ft-filter-direction"
-                value={direction}
-                onChange={(val) => setDirection(val)}
-                options={DIRECTION_OPTIONS}
-                placeholder="Pilih arah"
-              />
-              <label
-                className="chart-toolbar-label"
-                htmlFor="ft-filter-generation"
-              >
-                Generasi
-              </label>
-              <SearchableSelect
-                id="ft-filter-generation"
-                value={generationFilter}
-                onChange={(val) => setGenerationFilter(val)}
-                options={generationSelectOptions}
-                placeholder="Semua generasi"
-              />
-            </div>
+            <button
+              type="button"
+              className={`ft-toolbar-toggle-btn${showFilterPanel ? " active" : ""}`}
+              onClick={() => setShowFilterPanel((v) => !v)}
+            >
+              ⚙ Filter{(pairKey || generationFilter !== "all") ? " ●" : ""}
+            </button>
           )}
-          <div className="chart-toolbar-group">
-            <span className="chart-toolbar-label">{filterStatusLabel}</span>
-            {(pairKey || generationFilter !== "all") && (
-              <button
-                type="button"
-                className="chart-toolbar-button secondary"
-                onClick={() => {
-                  setPairKey("");
-                  setGenerationFilter("all");
-                  setDirection("both");
-                }}
-              >
-                Reset filter
-              </button>
-            )}
-            {exportError && (
-              <span className="chart-toolbar-error">{exportError}</span>
-            )}
-          </div>
+          <button
+            type="button"
+            className={`ft-toolbar-toggle-btn${showRelationPanel ? " active" : ""}`}
+            onClick={() => setShowRelationPanel((v) => !v)}
+          >
+            ↔ Hubungan
+          </button>
+          {(pairKey || generationFilter !== "all") && (
+            <button
+              type="button"
+              className="chart-toolbar-button secondary"
+              style={{ flexShrink: 0 }}
+              onClick={() => {
+                setPairKey("");
+                setGenerationFilter("all");
+                setDirection("both");
+              }}
+            >
+              Reset filter
+            </button>
+          )}
+          {exportError && (
+            <span className="chart-toolbar-error">{exportError}</span>
+          )}
         </div>
       )}
 
-      {/* Relation panel */}
-      {showControls && (
+      {/* Floating filter panel */}
+      {showControls && showFilterPanel && filterContext && (
+        <>
+          <div
+            className="ft-filter-panel-backdrop"
+            onClick={() => setShowFilterPanel(false)}
+          />
+          <div className="ft-filter-panel">
+            <div className="ft-relation-header">
+              <span className="chart-toolbar-label">Filter Silsilah</span>
+              <button
+                type="button"
+                className="ft-relation-close-btn"
+                onClick={() => setShowFilterPanel(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <label className="chart-toolbar-label" htmlFor="ft-filter-pair">
+              Pasangan
+            </label>
+            <SearchableSelect
+              id="ft-filter-pair"
+              value={pairKey}
+              onChange={(val) => setPairKey(val)}
+              options={pairOptions}
+              placeholder="Semua pasangan"
+            />
+            <label className="chart-toolbar-label" htmlFor="ft-filter-direction">
+              Arah
+            </label>
+            <SearchableSelect
+              id="ft-filter-direction"
+              value={direction}
+              onChange={(val) => setDirection(val)}
+              options={DIRECTION_OPTIONS}
+              placeholder="Pilih arah"
+            />
+            <label className="chart-toolbar-label" htmlFor="ft-filter-generation">
+              Generasi
+            </label>
+            <SearchableSelect
+              id="ft-filter-generation"
+              value={generationFilter}
+              onChange={(val) => setGenerationFilter(val)}
+              options={generationSelectOptions}
+              placeholder="Semua generasi"
+            />
+            <span className="chart-toolbar-label" style={{ marginTop: 4 }}>
+              {filterStatusLabel}
+            </span>
+          </div>
+        </>
+      )}
+
+      {/* Floating relation panel */}
+      {showControls && showRelationPanel && (
         <div
           ref={relationRef}
           className="ft-relation-panel"
@@ -1734,6 +1766,13 @@ const FamilyTree = memo(function FamilyTree({
             <span className="chart-toolbar-label">
               Jalur hubungan antara dua entitas
             </span>
+            <button
+              type="button"
+              className="ft-relation-close-btn"
+              onClick={() => setShowRelationPanel(false)}
+            >
+              ✕
+            </button>
           </div>
           <div className="ft-relation-form">
             <div className="ft-relation-field">
@@ -1873,6 +1912,16 @@ const FamilyTree = memo(function FamilyTree({
         onMouseLeave={handleMouseLeave}
         onDoubleClick={handleDoubleClick}
       >
+        {onAddPerson && (
+          <button
+            type="button"
+            className="ft-fab-add"
+            onClick={onAddPerson}
+            title="Tambah anggota keluarga"
+          >
+            +
+          </button>
+        )}
         <div
           ref={treeRef}
           className="ft-tree"
