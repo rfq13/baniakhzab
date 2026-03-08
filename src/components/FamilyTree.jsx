@@ -13,7 +13,7 @@ const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
 const ZOOM_STEP = 0.25;
 const WHEEL_ZOOM_SENSITIVITY = 0.0015;
-const ZOOM_PRECISION = 2;
+const ZOOM_PRECISION = 3;
 const SMOOTH_ZOOM_DURATION = 200;
 const SMOOTH_PAN_DURATION = 300;
 const PAN_MOMENTUM_FRICTION = 0.92;
@@ -526,6 +526,8 @@ const FamilyTree = memo(function FamilyTree({
     lastX: 0,
     lastY: 0,
     lastPinchDistance: 0,
+    lastPinchMidX: 0,
+    lastPinchMidY: 0,
   });
 
   const [exportSize, setExportSize] = useState("A3");
@@ -724,8 +726,9 @@ const FamilyTree = memo(function FamilyTree({
 
   // ===== Touch Handlers =====
   const handleTouchStart = useCallback((e) => {
+    const target = e.target instanceof Element ? e.target : null;
     // Only handled if touching the canvas, preventing interference with UI controls
-    if (e.target.closest('.ft-toolbar') || e.target.closest('.ft-relation-panel')) return;
+    if (target?.closest('.ft-toolbar') || target?.closest('.ft-relation-panel')) return;
 
     cancelMomentum();
     cancelAnimation();
@@ -738,6 +741,9 @@ const FamilyTree = memo(function FamilyTree({
         isPinching: false,
         lastX: touches[0].clientX,
         lastY: touches[0].clientY,
+        lastPinchDistance: 0,
+        lastPinchMidX: 0,
+        lastPinchMidY: 0,
       };
       panRef.current = {
         active: true,
@@ -751,11 +757,16 @@ const FamilyTree = memo(function FamilyTree({
       };
     } else if (touches.length === 2) {
       // Pinch
+      e.preventDefault();
       touchStateRef.current.isPanning = false;
       touchStateRef.current.isPinching = true;
       const dx = touches[0].clientX - touches[1].clientX;
       const dy = touches[0].clientY - touches[1].clientY;
       touchStateRef.current.lastPinchDistance = Math.sqrt(dx * dx + dy * dy);
+      touchStateRef.current.lastPinchMidX =
+        (touches[0].clientX + touches[1].clientX) / 2;
+      touchStateRef.current.lastPinchMidY =
+        (touches[0].clientY + touches[1].clientY) / 2;
       panRef.current.active = false;
     }
   }, [cancelAnimation, cancelMomentum]);
@@ -768,13 +779,19 @@ const FamilyTree = memo(function FamilyTree({
       const dx = touches[0].clientX - touches[1].clientX;
       const dy = touches[0].clientY - touches[1].clientY;
       const currentDistance = Math.sqrt(dx * dx + dy * dy);
-
-      const zoomRatio = currentDistance / touchStateRef.current.lastPinchDistance;
+      const previousDistance = touchStateRef.current.lastPinchDistance;
+      if (!Number.isFinite(currentDistance) || currentDistance <= 0) return;
+      if (!Number.isFinite(previousDistance) || previousDistance <= 0) {
+        touchStateRef.current.lastPinchDistance = currentDistance;
+        touchStateRef.current.lastPinchMidX =
+          (touches[0].clientX + touches[1].clientX) / 2;
+        touchStateRef.current.lastPinchMidY =
+          (touches[0].clientY + touches[1].clientY) / 2;
+        return;
+      }
+      const zoomRatio = currentDistance / previousDistance;
       const cur = transformRef.current;
       const newZoom = cur.zoom * zoomRatio;
-
-      touchStateRef.current.lastPinchDistance = currentDistance;
-
       const midX = (touches[0].clientX + touches[1].clientX) / 2;
       const midY = (touches[0].clientY + touches[1].clientY) / 2;
 
@@ -782,21 +799,29 @@ const FamilyTree = memo(function FamilyTree({
       if (!container) return;
 
       const rect = container.getBoundingClientRect();
+      const previousMidX = touchStateRef.current.lastPinchMidX || midX;
+      const previousMidY = touchStateRef.current.lastPinchMidY || midY;
+      const prevCursorX = previousMidX - rect.left;
+      const prevCursorY = previousMidY - rect.top;
       const cursorX = midX - rect.left;
       const cursorY = midY - rect.top;
 
-      const treeX = (cursorX - cur.x) / cur.zoom;
-      const treeY = (cursorY - cur.y) / cur.zoom;
+      const treeX = (prevCursorX - cur.x) / cur.zoom;
+      const treeY = (prevCursorY - cur.y) / cur.zoom;
 
       const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
       const newX = cursorX - treeX * clampedZoom;
       const newY = cursorY - treeY * clampedZoom;
 
       commitTransform({ x: newX, y: newY, zoom: clampedZoom });
+      touchStateRef.current.lastPinchDistance = currentDistance;
+      touchStateRef.current.lastPinchMidX = midX;
+      touchStateRef.current.lastPinchMidY = midY;
     } else if (touchStateRef.current.isPanning && touches.length === 1) {
+      const target = e.target instanceof Element ? e.target : null;
       // Prevent native scroll only on touch pan to avoid pull-to-refresh
       // Ensure we're not touching a scrollable panel
-      if (!e.target.closest('.modal-container') && !e.target.closest('.search-results')) {
+      if (!target?.closest('.modal-container') && !target?.closest('.search-results')) {
         e.preventDefault();
       }
 
@@ -824,6 +849,9 @@ const FamilyTree = memo(function FamilyTree({
     if (touches.length === 0) {
       touchStateRef.current.isPanning = false;
       touchStateRef.current.isPinching = false;
+      touchStateRef.current.lastPinchDistance = 0;
+      touchStateRef.current.lastPinchMidX = 0;
+      touchStateRef.current.lastPinchMidY = 0;
 
       if (panRef.current.active) {
         panRef.current.active = false;
@@ -838,6 +866,9 @@ const FamilyTree = memo(function FamilyTree({
         isPinching: false,
         lastX: touches[0].clientX,
         lastY: touches[0].clientY,
+        lastPinchDistance: 0,
+        lastPinchMidX: 0,
+        lastPinchMidY: 0,
       };
       panRef.current = {
         active: true,
@@ -851,6 +882,42 @@ const FamilyTree = memo(function FamilyTree({
       };
     }
   }, [runMomentum]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return undefined;
+
+    const handleTouchStartNative = (event) => {
+      handleTouchStart(event);
+    };
+    const handleTouchMoveNative = (event) => {
+      handleTouchMove(event);
+    };
+    const handleTouchEndNative = (event) => {
+      handleTouchEnd(event);
+    };
+    const preventGestureZoom = (event) => {
+      event.preventDefault();
+    };
+
+    el.addEventListener("touchstart", handleTouchStartNative, { passive: false });
+    el.addEventListener("touchmove", handleTouchMoveNative, { passive: false });
+    el.addEventListener("touchend", handleTouchEndNative, { passive: false });
+    el.addEventListener("touchcancel", handleTouchEndNative, { passive: false });
+    el.addEventListener("gesturestart", preventGestureZoom, { passive: false });
+    el.addEventListener("gesturechange", preventGestureZoom, { passive: false });
+    el.addEventListener("gestureend", preventGestureZoom, { passive: false });
+
+    return () => {
+      el.removeEventListener("touchstart", handleTouchStartNative);
+      el.removeEventListener("touchmove", handleTouchMoveNative);
+      el.removeEventListener("touchend", handleTouchEndNative);
+      el.removeEventListener("touchcancel", handleTouchEndNative);
+      el.removeEventListener("gesturestart", preventGestureZoom);
+      el.removeEventListener("gesturechange", preventGestureZoom);
+      el.removeEventListener("gestureend", preventGestureZoom);
+    };
+  }, [handleTouchEnd, handleTouchMove, handleTouchStart]);
 
   // ===== Focus on Node =====
   const focusOnNode = useCallback((nodeId) => {
@@ -1805,10 +1872,6 @@ const FamilyTree = memo(function FamilyTree({
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
         onDoubleClick={handleDoubleClick}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
       >
         <div
           ref={treeRef}
