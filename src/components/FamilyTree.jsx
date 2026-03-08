@@ -8,6 +8,7 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import { toPng, toSvg } from 'html-to-image';
+import createPanZoom from 'panzoom';
 import FamilyUnit from './FamilyUnit.jsx';
 import { findRelationPaths } from '../utils/buildFamilyTree.js';
 
@@ -20,12 +21,7 @@ const PAPER_SIZES = {
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8;
 const ZOOM_STEP = 0.25;
-const WHEEL_ZOOM_SENSITIVITY = 0.0015;
 const ZOOM_PRECISION = 3;
-const SMOOTH_ZOOM_DURATION = 200;
-const SMOOTH_PAN_DURATION = 300;
-const PAN_MOMENTUM_FRICTION = 0.92;
-const PAN_MOMENTUM_MIN_VELOCITY = 0.5;
 const FOCUS_ZOOM_LEVEL = 1.2;
 const TRANSFORM_IDLE_DELAY_MS = 140;
 const CONNECTOR_GRAPH_SNAP = 2; // 0.5px precision
@@ -454,22 +450,15 @@ const FamilyTree = memo(
     const containerRef = useRef(null);
     const treeRef = useRef(null);
 
-    // Transform-based zoom and pan state
-    const [transform, setTransform] = useState({ x: 0, y: 0, zoom: 0.5 });
+    // Transform is kept in refs and applied directly to DOM to avoid full tree re-render each gesture frame.
     const transformRef = useRef({ x: 0, y: 0, zoom: 0.5 });
-    const targetTransformRef = useRef({
-      startX: 0,
-      startY: 0,
-      startZoom: 0.5,
-      targetX: 0,
-      targetY: 0,
-      targetZoom: 0.5,
-      startTimestamp: 0,
-    });
-    const animationRef = useRef(null);
+    const panzoomRef = useRef(null);
     const transformIdleTimerRef = useRef(null);
     const initialFittedRef = useRef(false);
     const [isTransforming, setIsTransforming] = useState(false);
+    const isTransformingRef = useRef(false);
+    const [zoomDisplay, setZoomDisplay] = useState(50);
+    const zoomDisplayRafRef = useRef(null);
 
     const snapToDevicePixel = useCallback((value) => {
       const dpr =
@@ -495,73 +484,86 @@ const FamilyTree = memo(
       [snapToDevicePixel]
     );
 
+    const applyTransformToTree = useCallback((next) => {
+      const treeEl = treeRef.current;
+      if (!treeEl) return;
+      treeEl.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.zoom})`;
+      treeEl.style.transformOrigin = 'top left';
+      treeEl.style.willChange = isTransformingRef.current
+        ? 'transform'
+        : 'auto';
+    }, []);
+
+    const scheduleZoomDisplayUpdate = useCallback((zoom) => {
+      if (zoomDisplayRafRef.current) return;
+      zoomDisplayRafRef.current = requestAnimationFrame(() => {
+        setZoomDisplay(Math.round(zoom * 100));
+        zoomDisplayRafRef.current = null;
+      });
+    }, []);
+
     const scheduleTransformIdle = useCallback(() => {
       if (transformIdleTimerRef.current) {
         clearTimeout(transformIdleTimerRef.current);
       }
       transformIdleTimerRef.current = setTimeout(() => {
+        isTransformingRef.current = false;
         setIsTransforming(false);
+        applyTransformToTree(transformRef.current);
         transformIdleTimerRef.current = null;
       }, TRANSFORM_IDLE_DELAY_MS);
-    }, []);
+    }, [applyTransformToTree]);
 
     const commitTransform = useCallback(
       (nextOrUpdater) => {
-        setIsTransforming(true);
-        setTransform((prev) => {
-          const next =
-            typeof nextOrUpdater === 'function'
-              ? nextOrUpdater(prev)
-              : nextOrUpdater;
-          return normalizeTransform(next);
-        });
+        const base = transformRef.current;
+        const nextRaw =
+          typeof nextOrUpdater === 'function'
+            ? nextOrUpdater(base)
+            : nextOrUpdater;
+        const next = normalizeTransform(nextRaw);
+
+        const panzoom = panzoomRef.current;
+        if (panzoom) {
+          panzoom.zoomAbs(0, 0, next.zoom);
+          panzoom.moveTo(next.x, next.y);
+          return;
+        }
+
+        transformRef.current = next;
+        if (!isTransformingRef.current) {
+          isTransformingRef.current = true;
+          setIsTransforming(true);
+        }
+        applyTransformToTree(next);
+        scheduleZoomDisplayUpdate(next.zoom);
         scheduleTransformIdle();
       },
-      [normalizeTransform, scheduleTransformIdle]
+      [
+        normalizeTransform,
+        applyTransformToTree,
+        scheduleZoomDisplayUpdate,
+        scheduleTransformIdle,
+      ]
     );
 
-    // Keep transformRef in sync with state
     useEffect(() => {
-      transformRef.current = transform;
-    }, [transform]);
+      applyTransformToTree(transformRef.current);
+      setZoomDisplay(Math.round(transformRef.current.zoom * 100));
+    }, [applyTransformToTree]);
 
     useEffect(
       () => () => {
         if (transformIdleTimerRef.current) {
           clearTimeout(transformIdleTimerRef.current);
         }
+        if (zoomDisplayRafRef.current) {
+          cancelAnimationFrame(zoomDisplayRafRef.current);
+          zoomDisplayRafRef.current = null;
+        }
       },
       []
     );
-
-    // Pan state with momentum
-    const panRef = useRef({
-      active: false,
-      startX: 0,
-      startY: 0,
-      velocityX: 0,
-      velocityY: 0,
-      lastX: 0,
-      lastY: 0,
-      lastTimestamp: 0,
-    });
-
-    const momentumRef = useRef({
-      active: false,
-      velocityX: 0,
-      velocityY: 0,
-      animationFrame: null,
-    });
-
-    const touchStateRef = useRef({
-      isPanning: false,
-      isPinching: false,
-      lastX: 0,
-      lastY: 0,
-      lastPinchDistance: 0,
-      lastPinchMidX: 0,
-      lastPinchMidY: 0,
-    });
 
     const [exportSize, setExportSize] = useState('A3');
     const [exportError, setExportError] = useState('');
@@ -591,427 +593,111 @@ const FamilyTree = memo(
     const [showRelationPanel, setShowRelationPanel] = useState(false);
     const relationRef = useRef(null);
 
-    // ===== Animation Helpers =====
-    const lerp = useCallback((start, end, t) => start + (end - start) * t, []);
-    const easeOutCubic = useCallback((t) => 1 - Math.pow(1 - t, 3), []);
-
-    // ===== Smooth Animation Loop =====
-    const runAnimation = useCallback(() => {
-      const now = performance.now();
-      const delta = now - targetTransformRef.current.startTimestamp;
-
-      const progress = Math.min(delta / SMOOTH_ZOOM_DURATION, 1);
-      const easedProgress = easeOutCubic(progress);
-
-      const newX = lerp(
-        targetTransformRef.current.startX,
-        targetTransformRef.current.targetX,
-        easedProgress
-      );
-      const newY = lerp(
-        targetTransformRef.current.startY,
-        targetTransformRef.current.targetY,
-        easedProgress
-      );
-      const newZoom = lerp(
-        targetTransformRef.current.startZoom,
-        targetTransformRef.current.targetZoom,
-        easedProgress
-      );
-
-      commitTransform({ x: newX, y: newY, zoom: newZoom });
-
-      if (progress < 1) {
-        animationRef.current = requestAnimationFrame(runAnimation);
+    const getInteractionProfile = useCallback(() => {
+      if (typeof window === 'undefined') {
+        return {
+          mobileLike: false,
+          zoomSpeed: 0.07,
+          pinchSpeed: 1.35,
+          smoothScroll: true,
+        };
       }
-    }, [lerp, easeOutCubic, commitTransform]);
+
+      const coarsePointer =
+        typeof window.matchMedia === 'function'
+          ? window.matchMedia('(pointer: coarse)').matches
+          : false;
+      const touchPoints = Number(navigator.maxTouchPoints || 0);
+      const mobileViewport = window.innerWidth <= 900;
+      const mobileLike = coarsePointer && touchPoints > 0 && mobileViewport;
+
+      return {
+        mobileLike,
+        // Lower wheel speed on mobile-like devices to avoid jumpy zoom.
+        zoomSpeed: mobileLike ? 0.045 : 0.07,
+        // Tune pinch sensitivity to feel controlled on phones.
+        pinchSpeed: mobileLike ? 1.15 : 1.35,
+        // Desktop gets smooth wheel inertia, mobile stays direct and stable.
+        smoothScroll: !mobileLike,
+      };
+    }, []);
+
+    // ===== Panzoom Engine =====
+    useEffect(() => {
+      const treeEl = treeRef.current;
+      if (!treeEl) return undefined;
+
+      const profile = getInteractionProfile();
+
+      const panzoom = createPanZoom(treeEl, {
+        minZoom: MIN_ZOOM,
+        maxZoom: MAX_ZOOM,
+        zoomSpeed: profile.zoomSpeed,
+        pinchSpeed: profile.pinchSpeed,
+        smoothScroll: profile.smoothScroll,
+        disableKeyboardInteraction: true,
+        // Ignore wheel gestures for mobile-like devices; keep desktop wheel zoom.
+        beforeWheel: () => profile.mobileLike,
+        onDoubleClick: () => true,
+      });
+
+      panzoomRef.current = panzoom;
+
+      // Ensure engine starts from current transform values.
+      const initial = transformRef.current;
+      panzoom.zoomAbs(0, 0, initial.zoom);
+      panzoom.moveTo(initial.x, initial.y);
+
+      const onTransform = () => {
+        const tr = panzoom.getTransform();
+        const next = normalizeTransform({ x: tr.x, y: tr.y, zoom: tr.scale });
+        transformRef.current = next;
+        if (!isTransformingRef.current) {
+          isTransformingRef.current = true;
+          setIsTransforming(true);
+        }
+        applyTransformToTree(next);
+        scheduleZoomDisplayUpdate(next.zoom);
+        scheduleTransformIdle();
+      };
+
+      panzoom.on('transform', onTransform);
+
+      return () => {
+        panzoom.off('transform', onTransform);
+        panzoom.dispose();
+        if (panzoomRef.current === panzoom) {
+          panzoomRef.current = null;
+        }
+      };
+    }, [
+      applyTransformToTree,
+      getInteractionProfile,
+      normalizeTransform,
+      scheduleTransformIdle,
+      scheduleZoomDisplayUpdate,
+    ]);
 
     const animateTransform = useCallback(
       (newX, newY, newZoom) => {
-        if (animationRef.current) {
-          cancelAnimationFrame(animationRef.current);
-        }
-
-        const cur = transformRef.current;
-        const normalizedTarget = normalizeTransform({
+        const normalized = normalizeTransform({
           x: newX,
           y: newY,
           zoom: newZoom,
         });
-        targetTransformRef.current = {
-          startX: cur.x,
-          startY: cur.y,
-          startZoom: cur.zoom,
-          targetX: normalizedTarget.x,
-          targetY: normalizedTarget.y,
-          targetZoom: normalizedTarget.zoom,
-          startTimestamp: performance.now(),
-        };
-
-        animationRef.current = requestAnimationFrame(runAnimation);
-      },
-      [runAnimation, normalizeTransform]
-    );
-
-    const cancelAnimation = useCallback(() => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
-    }, []);
-
-    // ===== Cursor-Based Zoom =====
-    const zoomAtPoint = useCallback(
-      (deltaZoom, clientX, clientY) => {
-        const container = containerRef.current;
-        if (!container) return;
-
-        const rect = container.getBoundingClientRect();
-        const cursorX = clientX - rect.left;
-        const cursorY = clientY - rect.top;
-
-        const cur = transformRef.current;
-        const newZoom = Math.max(
-          MIN_ZOOM,
-          Math.min(MAX_ZOOM, cur.zoom + deltaZoom)
-        );
-
-        if (newZoom === cur.zoom) return;
-
-        // Keep the same tree point under the cursor while zooming.
-        const treeX = (cursorX - cur.x) / cur.zoom;
-        const treeY = (cursorY - cur.y) / cur.zoom;
-        const newX = cursorX - treeX * newZoom;
-        const newY = cursorY - treeY * newZoom;
-
-        cancelAnimation();
-        commitTransform({ x: newX, y: newY, zoom: newZoom });
-      },
-      [cancelAnimation, commitTransform]
-    );
-
-    // ===== Pan Handlers =====
-    const handleMouseDown = useCallback(
-      (e) => {
-        if (e.button !== 0) return;
-        cancelMomentum();
-        cancelAnimation();
-
-        panRef.current = {
-          active: true,
-          startX: e.clientX,
-          startY: e.clientY,
-          velocityX: 0,
-          velocityY: 0,
-          lastX: e.clientX,
-          lastY: e.clientY,
-          lastTimestamp: performance.now(),
-        };
-        if (containerRef.current) {
-          containerRef.current.style.cursor = 'grabbing';
-        }
-        e.preventDefault();
-      },
-      [cancelAnimation]
-    );
-
-    const handleMouseMove = useCallback(
-      (e) => {
-        if (!panRef.current.active) return;
-
-        const deltaX = e.clientX - panRef.current.lastX;
-        const deltaY = e.clientY - panRef.current.lastY;
-
-        panRef.current.velocityX = deltaX;
-        panRef.current.velocityY = deltaY;
-        panRef.current.lastX = e.clientX;
-        panRef.current.lastY = e.clientY;
-
-        commitTransform((prev) => ({
-          ...prev,
-          x: prev.x + deltaX,
-          y: prev.y + deltaY,
-        }));
-      },
-      [commitTransform]
-    );
-
-    // ===== Momentum Animation =====
-    const cancelMomentum = useCallback(() => {
-      if (momentumRef.current.animationFrame) {
-        cancelAnimationFrame(momentumRef.current.animationFrame);
-        momentumRef.current.animationFrame = null;
-      }
-      momentumRef.current.active = false;
-      momentumRef.current.velocityX = 0;
-      momentumRef.current.velocityY = 0;
-    }, []);
-
-    const runMomentum = useCallback(() => {
-      momentumRef.current.velocityX *= PAN_MOMENTUM_FRICTION;
-      momentumRef.current.velocityY *= PAN_MOMENTUM_FRICTION;
-
-      const absVx = Math.abs(momentumRef.current.velocityX);
-      const absVy = Math.abs(momentumRef.current.velocityY);
-
-      if (
-        absVx < PAN_MOMENTUM_MIN_VELOCITY &&
-        absVy < PAN_MOMENTUM_MIN_VELOCITY
-      ) {
-        cancelMomentum();
-        return;
-      }
-
-      commitTransform((prev) => ({
-        ...prev,
-        x: prev.x + momentumRef.current.velocityX,
-        y: prev.y + momentumRef.current.velocityY,
-      }));
-
-      momentumRef.current.animationFrame = requestAnimationFrame(runMomentum);
-    }, [cancelMomentum, commitTransform]);
-
-    const handleMouseUp = useCallback(() => {
-      if (!panRef.current.active) return;
-
-      panRef.current.active = false;
-      if (containerRef.current) {
-        containerRef.current.style.cursor = '';
-      }
-
-      momentumRef.current.velocityX = panRef.current.velocityX;
-      momentumRef.current.velocityY = panRef.current.velocityY;
-      momentumRef.current.active = true;
-      runMomentum();
-    }, [runMomentum]);
-
-    const handleMouseLeave = useCallback(() => {
-      handleMouseUp();
-    }, [handleMouseUp]);
-
-    // ===== Touch Handlers =====
-    const handleTouchStart = useCallback(
-      (e) => {
-        const target = e.target instanceof Element ? e.target : null;
-        // Only handled if touching the canvas, preventing interference with UI controls
-        if (
-          target?.closest('.ft-toolbar') ||
-          target?.closest('.ft-relation-panel') ||
-          target?.closest('.ft-filter-panel')
-        )
+        const panzoom = panzoomRef.current;
+        if (panzoom) {
+          const rect = containerRef.current?.getBoundingClientRect();
+          const focalX = rect ? rect.left + rect.width / 2 : 0;
+          const focalY = rect ? rect.top + rect.height / 2 : 0;
+          panzoom.smoothZoomAbs(focalX, focalY, normalized.zoom);
+          panzoom.smoothMoveTo(normalized.x, normalized.y);
           return;
-
-        cancelMomentum();
-        cancelAnimation();
-        const touches = e.touches;
-
-        if (touches.length === 1) {
-          // Pan
-          touchStateRef.current = {
-            isPanning: true,
-            isPinching: false,
-            lastX: touches[0].clientX,
-            lastY: touches[0].clientY,
-            lastPinchDistance: 0,
-            lastPinchMidX: 0,
-            lastPinchMidY: 0,
-          };
-          panRef.current = {
-            active: true,
-            startX: touches[0].clientX,
-            startY: touches[0].clientY,
-            velocityX: 0,
-            velocityY: 0,
-            lastX: touches[0].clientX,
-            lastY: touches[0].clientY,
-            lastTimestamp: performance.now(),
-          };
-        } else if (touches.length === 2) {
-          // Pinch — preventDefault early to prevent iOS Safari page zoom interference
-          e.preventDefault();
-          touchStateRef.current.isPanning = false;
-          touchStateRef.current.isPinching = true;
-          const dx = touches[0].clientX - touches[1].clientX;
-          const dy = touches[0].clientY - touches[1].clientY;
-          touchStateRef.current.lastPinchDistance = Math.sqrt(
-            dx * dx + dy * dy
-          );
-          touchStateRef.current.lastPinchMidX =
-            (touches[0].clientX + touches[1].clientX) / 2;
-          touchStateRef.current.lastPinchMidY =
-            (touches[0].clientY + touches[1].clientY) / 2;
-          panRef.current.active = false;
         }
+        commitTransform(normalized);
       },
-      [cancelAnimation, cancelMomentum]
+      [normalizeTransform, commitTransform]
     );
-
-    const handleTouchMove = useCallback(
-      (e) => {
-        const touches = e.touches;
-
-        if (touchStateRef.current.isPinching && touches.length === 2) {
-          e.preventDefault(); // Prevent native browser zooming/scrolling
-          const dx = touches[0].clientX - touches[1].clientX;
-          const dy = touches[0].clientY - touches[1].clientY;
-          const currentDistance = Math.sqrt(dx * dx + dy * dy);
-          const previousDistance = touchStateRef.current.lastPinchDistance;
-          if (!Number.isFinite(currentDistance) || currentDistance <= 0) return;
-          if (!Number.isFinite(previousDistance) || previousDistance <= 0) {
-            touchStateRef.current.lastPinchDistance = currentDistance;
-            touchStateRef.current.lastPinchMidX =
-              (touches[0].clientX + touches[1].clientX) / 2;
-            touchStateRef.current.lastPinchMidY =
-              (touches[0].clientY + touches[1].clientY) / 2;
-            return;
-          }
-          const zoomRatio = currentDistance / previousDistance;
-          const cur = transformRef.current;
-          const newZoom = cur.zoom * zoomRatio;
-          const midX = (touches[0].clientX + touches[1].clientX) / 2;
-          const midY = (touches[0].clientY + touches[1].clientY) / 2;
-
-          const container = containerRef.current;
-          if (!container) return;
-
-          const rect = container.getBoundingClientRect();
-          const previousMidX = touchStateRef.current.lastPinchMidX || midX;
-          const previousMidY = touchStateRef.current.lastPinchMidY || midY;
-          const prevCursorX = previousMidX - rect.left;
-          const prevCursorY = previousMidY - rect.top;
-          const cursorX = midX - rect.left;
-          const cursorY = midY - rect.top;
-
-          const treeX = (prevCursorX - cur.x) / cur.zoom;
-          const treeY = (prevCursorY - cur.y) / cur.zoom;
-
-          const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
-          const newX = cursorX - treeX * clampedZoom;
-          const newY = cursorY - treeY * clampedZoom;
-
-          commitTransform({ x: newX, y: newY, zoom: clampedZoom });
-          touchStateRef.current.lastPinchDistance = currentDistance;
-          touchStateRef.current.lastPinchMidX = midX;
-          touchStateRef.current.lastPinchMidY = midY;
-        } else if (touchStateRef.current.isPanning && touches.length === 1) {
-          const target = e.target instanceof Element ? e.target : null;
-          // Prevent native scroll only on touch pan to avoid pull-to-refresh
-          // Ensure we're not touching a scrollable panel
-          if (
-            !target?.closest('.modal-container') &&
-            !target?.closest('.search-results')
-          ) {
-            e.preventDefault();
-          }
-
-          const deltaX = touches[0].clientX - touchStateRef.current.lastX;
-          const deltaY = touches[0].clientY - touchStateRef.current.lastY;
-
-          touchStateRef.current.lastX = touches[0].clientX;
-          touchStateRef.current.lastY = touches[0].clientY;
-
-          panRef.current.velocityX = deltaX;
-          panRef.current.velocityY = deltaY;
-          panRef.current.lastX = touches[0].clientX;
-          panRef.current.lastY = touches[0].clientY;
-
-          commitTransform((prev) => ({
-            ...prev,
-            x: prev.x + deltaX,
-            y: prev.y + deltaY,
-          }));
-        }
-      },
-      [commitTransform]
-    );
-
-    const handleTouchEnd = useCallback(
-      (e) => {
-        const touches = e.touches;
-        if (touches.length === 0) {
-          touchStateRef.current.isPanning = false;
-          touchStateRef.current.isPinching = false;
-          touchStateRef.current.lastPinchDistance = 0;
-          touchStateRef.current.lastPinchMidX = 0;
-          touchStateRef.current.lastPinchMidY = 0;
-
-          if (panRef.current.active) {
-            panRef.current.active = false;
-            momentumRef.current.velocityX = panRef.current.velocityX;
-            momentumRef.current.velocityY = panRef.current.velocityY;
-            momentumRef.current.active = true;
-            runMomentum();
-          }
-        } else if (touches.length === 1) {
-          touchStateRef.current = {
-            isPanning: true,
-            isPinching: false,
-            lastX: touches[0].clientX,
-            lastY: touches[0].clientY,
-            lastPinchDistance: 0,
-            lastPinchMidX: 0,
-            lastPinchMidY: 0,
-          };
-          panRef.current = {
-            active: true,
-            startX: touches[0].clientX,
-            startY: touches[0].clientY,
-            velocityX: 0,
-            velocityY: 0,
-            lastX: touches[0].clientX,
-            lastY: touches[0].clientY,
-            lastTimestamp: performance.now(),
-          };
-        }
-      },
-      [runMomentum]
-    );
-
-    useEffect(() => {
-      const el = containerRef.current;
-      if (!el) return undefined;
-
-      const handleTouchStartNative = (event) => {
-        handleTouchStart(event);
-      };
-      const handleTouchMoveNative = (event) => {
-        handleTouchMove(event);
-      };
-      const handleTouchEndNative = (event) => {
-        handleTouchEnd(event);
-      };
-      const preventGestureZoom = (event) => {
-        event.preventDefault();
-      };
-
-      el.addEventListener('touchstart', handleTouchStartNative, {
-        passive: false,
-      });
-      el.addEventListener('touchmove', handleTouchMoveNative, {
-        passive: false,
-      });
-      el.addEventListener('touchend', handleTouchEndNative, { passive: false });
-      el.addEventListener('touchcancel', handleTouchEndNative, {
-        passive: false,
-      });
-      el.addEventListener('gesturestart', preventGestureZoom, {
-        passive: false,
-      });
-      el.addEventListener('gesturechange', preventGestureZoom, {
-        passive: false,
-      });
-      el.addEventListener('gestureend', preventGestureZoom, { passive: false });
-
-      return () => {
-        el.removeEventListener('touchstart', handleTouchStartNative);
-        el.removeEventListener('touchmove', handleTouchMoveNative);
-        el.removeEventListener('touchend', handleTouchEndNative);
-        el.removeEventListener('touchcancel', handleTouchEndNative);
-        el.removeEventListener('gesturestart', preventGestureZoom);
-        el.removeEventListener('gesturechange', preventGestureZoom);
-        el.removeEventListener('gestureend', preventGestureZoom);
-      };
-    }, [handleTouchEnd, handleTouchMove, handleTouchStart]);
 
     // ===== Focus on Node =====
     const focusOnNode = useCallback(
@@ -1045,10 +731,9 @@ const FamilyTree = memo(
         const newX = containerCenterX - cardTreeX * newZoom;
         const newY = containerCenterY - cardTreeY * newZoom;
 
-        cancelMomentum();
         animateTransform(newX, newY, newZoom);
       },
-      [animateTransform, cancelMomentum]
+      [animateTransform]
     );
 
     // ===== Double-Click to Fit =====
@@ -1068,72 +753,6 @@ const FamilyTree = memo(
       if (!selectedId) return;
       focusOnNode(selectedId);
     }, [selectedId, focusOnNode]);
-
-    // ===== Wheel Handler =====
-    useEffect(() => {
-      const el = containerRef.current;
-      if (!el) return;
-
-      let wheelTimeout = null;
-
-      const onWheel = (e) => {
-        const isHorizontal = Math.abs(e.deltaX) > Math.abs(e.deltaY);
-        if (isHorizontal) return;
-
-        const isTouchpad = Math.abs(e.deltaY) < 50;
-
-        if (isTouchpad) {
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            e.stopPropagation();
-            cancelMomentum();
-            cancelAnimation();
-            const deltaZoom = -e.deltaY * WHEEL_ZOOM_SENSITIVITY * 5;
-            zoomAtPoint(deltaZoom, e.clientX, e.clientY);
-          } else {
-            e.preventDefault();
-            cancelMomentum();
-            cancelAnimation();
-            commitTransform((prev) => ({
-              ...prev,
-              x: prev.x - e.deltaX,
-              y: prev.y - e.deltaY,
-            }));
-          }
-        } else {
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            e.stopPropagation();
-            cancelMomentum();
-            cancelAnimation();
-            commitTransform((prev) => ({
-              ...prev,
-              x: prev.x - e.deltaX,
-              y: prev.y - e.deltaY,
-            }));
-          } else {
-            e.preventDefault();
-            e.stopPropagation();
-            cancelMomentum();
-            cancelAnimation();
-
-            if (wheelTimeout) {
-              cancelAnimationFrame(wheelTimeout);
-            }
-            wheelTimeout = requestAnimationFrame(() => {
-              const deltaZoom = -e.deltaY * WHEEL_ZOOM_SENSITIVITY;
-              zoomAtPoint(deltaZoom, e.clientX, e.clientY);
-            });
-          }
-        }
-      };
-
-      el.addEventListener('wheel', onWheel, { passive: false });
-      return () => {
-        el.removeEventListener('wheel', onWheel);
-        if (wheelTimeout) cancelAnimationFrame(wheelTimeout);
-      };
-    }, [zoomAtPoint, cancelMomentum, cancelAnimation, commitTransform]);
 
     // ===== Zoom Buttons =====
     const zoomIn = () => {
@@ -1155,7 +774,6 @@ const FamilyTree = memo(
     };
 
     const zoomReset = () => {
-      cancelMomentum();
       animateTransform(0, 0, 0.5);
     };
 
@@ -1784,9 +1402,7 @@ const FamilyTree = memo(
           >
             −
           </button>
-          <span className="ft-zoom-label">
-            {Math.round(transform.zoom * 100)}%
-          </span>
+          <span className="ft-zoom-label">{zoomDisplay}%</span>
           <button
             type="button"
             className="ft-zoom-btn"
@@ -2020,10 +1636,6 @@ const FamilyTree = memo(
         <div
           ref={containerRef}
           className="ft-canvas"
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseLeave}
           onDoubleClick={handleDoubleClick}
         >
           {onAddPerson && (
@@ -2041,7 +1653,6 @@ const FamilyTree = memo(
             ref={treeRef}
             className="ft-tree"
             style={{
-              transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
               transformOrigin: 'top left',
               willChange: isTransforming ? 'transform' : 'auto',
             }}
