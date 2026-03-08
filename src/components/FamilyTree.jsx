@@ -509,7 +509,10 @@ const FamilyTree = memo(
       transformIdleTimerRef.current = setTimeout(() => {
         isTransformingRef.current = false;
         setIsTransforming(false);
-        applyTransformToTree(transformRef.current);
+        // When panzoom is active, it already owns transform writes.
+        if (!panzoomRef.current) {
+          applyTransformToTree(transformRef.current);
+        }
         transformIdleTimerRef.current = null;
       }, TRANSFORM_IDLE_DELAY_MS);
     }, [applyTransformToTree]);
@@ -638,6 +641,28 @@ const FamilyTree = memo(
         disableKeyboardInteraction: true,
         // Ignore wheel gestures for mobile-like devices; keep desktop wheel zoom.
         beforeWheel: () => profile.mobileLike,
+        // Preserve click/tap behavior on person cards and UI controls.
+        beforeMouseDown: (e) => {
+          const target = e.target instanceof Element ? e.target : null;
+          if (!target) return false;
+          return Boolean(
+            target.closest('[data-person-id]') ||
+              target.closest('button, input, select, textarea, a, label') ||
+              target.closest('.ft-filter-panel, .ft-relation-panel')
+          );
+        },
+        onTouch: (e) => {
+          const target = e.target instanceof Element ? e.target : null;
+          if (!target) return true;
+          // Return false to prevent panzoom from preventing default/propagation
+          // so taps on cards still fire normal click handlers on mobile.
+          if (target.closest('[data-person-id]')) return false;
+          if (target.closest('button, input, select, textarea, a, label'))
+            return false;
+          if (target.closest('.ft-filter-panel, .ft-relation-panel'))
+            return false;
+          return true;
+        },
         onDoubleClick: () => true,
       });
 
@@ -650,13 +675,13 @@ const FamilyTree = memo(
 
       const onTransform = () => {
         const tr = panzoom.getTransform();
-        const next = normalizeTransform({ x: tr.x, y: tr.y, zoom: tr.scale });
+        // Avoid snapping/re-applying transform here to prevent feedback jitter.
+        const next = { x: tr.x, y: tr.y, zoom: tr.scale };
         transformRef.current = next;
         if (!isTransformingRef.current) {
           isTransformingRef.current = true;
           setIsTransforming(true);
         }
-        applyTransformToTree(next);
         scheduleZoomDisplayUpdate(next.zoom);
         scheduleTransformIdle();
       };
