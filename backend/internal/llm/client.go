@@ -218,19 +218,32 @@ func (c *Client) GenerateDatabaseSQL(ctx context.Context, naturalLanguage string
 	systemPrompt := "Kamu adalah asisten SQL untuk sistem silsilah keluarga Bani Akhzab. " +
 		"Skema: HANYA tabel 'persons' dengan kolom: id (integer PK), full_name (text), " +
 		"gender (text, nilai HARUS salah satu dari: 'Laki-laki' atau 'Perempuan' — case-sensitive, huruf kapital di awal), " +
-		"father_id (integer nullable FK), mother_id (integer nullable FK), spouse_ids (integer[]), " +
-		"generation (text), wa_number (text), alamat (text), url (text), " +
+		"father_id (integer nullable FK → persons.id, menunjuk ke ayah), " +
+		"mother_id (integer nullable FK → persons.id, menunjuk ke ibu), " +
+		"spouse_ids (integer[] — array ID pasangan menikah; jika KOSONG/empty array '{}' artinya BELUM MENIKAH, jika berisi ID artinya SUDAH MENIKAH), " +
+		"generation (text), wa_number (text), alamat (text), url (text), img_url (text), " +
 		"created_at (timestamp), updated_at (timestamp), deleted_at (timestamp nullable). " +
+		"PANDUAN QUERY UMUM: " +
+		"- Cek belum menikah: spouse_ids = '{}' ATAU cardinality(spouse_ids) = 0. " +
+		"- Cek sudah menikah: cardinality(spouse_ids) > 0. " +
+		"- Hitung jumlah: gunakan COUNT(*). " +
+		"- 'Keluarga besar' = seluruh data di tabel persons. " +
+		"- Self-join: FROM persons p1 JOIN persons p2 ON ... " +
+		"- Cari anak: SELECT * FROM persons WHERE father_id = X OR mother_id = X. " +
+		"- Cari saudara kandung: orang lain dengan father_id/mother_id yang sama. " +
 		"ATURAN KETAT: " +
 		"1. HANYA boleh generate query SELECT. Dilarang INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE, GRANT, REVOKE, COPY, EXECUTE, PREPARE. " +
 		"2. HANYA boleh query tabel 'persons'. Dilarang akses tabel lain, information_schema, pg_catalog, atau system catalog apapun. " +
 		"3. Dilarang menggunakan WITH, CTE, atau subquery yang mengandung INSERT/UPDATE/DELETE. " +
 		"4. Dilarang menggunakan fungsi: pg_sleep, pg_read_file, pg_ls_dir, lo_import, lo_export, dblink, atau fungsi sistem berbahaya lainnya. " +
 		"5. Dilarang menggunakan komentar SQL (-- atau /* */). " +
-		"6. Query WAJIB memiliki LIMIT maksimal 50. " +
-		"7. Gunakan PostgreSQL syntax. Gunakan JOIN sederhana, hindari WITH RECURSIVE jika tidak perlu. " +
+		"6. Query WAJIB memiliki LIMIT maksimal 50. Untuk COUNT(*) boleh tanpa LIMIT. " +
+		"7. Gunakan PostgreSQL syntax. " +
 		"8. Filter deleted_at IS NULL untuk mengabaikan data yang sudah dihapus. " +
-		"Respon SELALU dalam format JSON: {\"sql\": \"...\", \"explanation\": \"...\"}."
+		"Respon SELALU dalam format JSON: {\"sql\": \"...\", \"explanation\": \"...\"}. " +
+		"CONTOH: " +
+		"Q: Berapa perempuan yang belum menikah? " +
+		"A: {\"sql\": \"SELECT COUNT(*) AS total FROM persons WHERE gender = 'Perempuan' AND spouse_ids = '{}' AND deleted_at IS NULL\", \"explanation\": \"Menghitung perempuan dengan spouse_ids kosong (belum menikah)\"}"
 
 	messages := []chatMessage{
 		{Role: "system", Content: systemPrompt},
@@ -449,8 +462,9 @@ PANDUAN PENALARAN (CHAIN-OF-THOUGHT):
 1. DEKOMPOSISI: Jika pertanyaan melibatkan hubungan berlapis (misal: "sepupu ayah"), pecah menjadi langkah-langkah pencarian (Cari Ayah -> Cari Saudara Ayah -> Cari Anak mereka).
 2. KONTEKS: Gunakan ID user (%s) sebagai titik awal jika user bertanya tentang dirinya sendiri ("siapa ayah saya?", "paman saya", dll).
 3. EKSEKUSI TOOL: Gunakan tool secara berurutan. Jika butuh ID seseorang, gunakan 'SearchPerson' atau 'GetFilteredRelatives' terlebih dahulu.
-4. UPDATE DATA: Kamu dapat memperbarui nomor WhatsApp anggota keluarga menggunakan tool 'UpdatePersonWANumber'. Lakukan HANYA jika diminta secara eksplisit. Pastikan kamu telah mengidentifikasi ID orang yang benar sebelum mengupdate (gunakan SearchPerson/GetFilteredRelatives jika perlu).
-5. UPDATE STATE: Gunakan 'UpdateConversationFocus' di akhir penalaran untuk mencatat orang yang menjadi topik utama pembicaraan, agar kamu tahu siapa "dia" di pertanyaan selanjutnya. Cukup panggil tool ini satu kali saja untuk orang yang paling relevan di akhir jawabanmu.
+4. STATISTIK & AGREGAT: Untuk pertanyaan yang menghitung jumlah ("berapa banyak...", "ada berapa...", "siapa saja yang...") atau memfilter seluruh keluarga besar, SELALU gunakan tool 'AskDatabase' karena tool ini dapat melakukan query SQL langsung ke database. Contoh: "berapa perempuan belum menikah?", "siapa saja yang belum punya pasangan?", "ada berapa laki-laki di generasi ke-3?".
+5. UPDATE DATA: Kamu dapat memperbarui nomor WhatsApp anggota keluarga menggunakan tool 'UpdatePersonWANumber'. Lakukan HANYA jika diminta secara eksplisit. Pastikan kamu telah mengidentifikasi ID orang yang benar sebelum mengupdate (gunakan SearchPerson/GetFilteredRelatives jika perlu).
+6. UPDATE STATE: Gunakan 'UpdateConversationFocus' di akhir penalaran untuk mencatat orang yang menjadi topik utama pembicaraan, agar kamu tahu siapa "dia" di pertanyaan selanjutnya. Cukup panggil tool ini satu kali saja untuk orang yang paling relevan di akhir jawabanmu.
 6. ANALISIS SAPAAN & ISTILAH (KULTUR JAWA):
    Gunakan istilah sapaan yang tepat berdasarkan posisi di silsilah:
    - KE ATAS (Munggah): 

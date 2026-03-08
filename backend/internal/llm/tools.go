@@ -275,8 +275,14 @@ func (t AskDatabaseTool) Name() string {
 }
 
 func (t AskDatabaseTool) Description() string {
-	return `Tanya langsung ke database silsilah keluarga dalam bentuk SQL (akan digenerate otomatis). Gunakan tool ini jika ditanya siapa saudara ayah, paman, sepupu, keponakan, cucu jemaah, atau jika butuh mencari sekumpulan anggota keluarga berdasarkan kriteria tertentu.
-Input harus berupa JSON dengan key "question" berisi pertanyaan spesifik dalam bahasa alami (contoh: "siapa saja sepupu saya?"). Jangan gunakan ID dalam pertanyaannya jika tidak perlu, sebut nama atau diri pengguna jika konteksnya sudah jelas.`
+	return `Tanya langsung ke database silsilah keluarga dalam bentuk SQL (akan digenerate otomatis). 
+WAJIB gunakan tool ini untuk pertanyaan yang:
+- Menghitung jumlah (berapa banyak, ada berapa, total)
+- Mencari berdasarkan kriteria tertentu di seluruh keluarga besar (belum menikah, perempuan, laki-laki, dll)
+- Statistik atau agregat (rata-rata, terbanyak, dll)
+- Daftar orang dengan filter tertentu yang tidak bisa dijawab oleh GetFilteredRelatives
+Input harus berupa JSON dengan key "question" berisi pertanyaan spesifik dalam bahasa alami.
+Contoh pertanyaan yang cocok: "berapa perempuan yang belum menikah?", "siapa saja laki-laki yang tidak punya anak?", "ada berapa orang di generasi ke-3?".`
 }
 
 func (t AskDatabaseTool) Call(ctx context.Context, input string) (string, error) {
