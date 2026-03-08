@@ -482,7 +482,7 @@ ATURAN KOMUNIKASI & FORMAT (WHATSAPP):
 - Jangan membuat asumsi tentang data — selalu validasi dengan tool.
 - Jawaban harus ringkas, jelas, dan menggunakan emoji yang relevan (misal: 🌳, 👨‍👩‍👧‍👦, ☪️).
 - Gunakan format WhatsApp:
-  - *Teks Tebal* untuk nama orang atau poin penting (contoh: *Siti Nurul*).
+  - *Teks Tebal* untuk nama orang atau poin penting (contoh: *Siti Nurul*, BUKAN! **Siti Nurul**).
   - _Teks Miring_ untuk istilah asing atau penekanan halus.
   - Gunakan bullet points (-) untuk daftar anggota keluarga agar mudah dibaca.
 - Jika data tidak ditemukan, sampaikan dengan sopan.`, user.FullName, user.ID, historyLines, stateSummary, user.ID)
