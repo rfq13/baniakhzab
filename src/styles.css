@@ -2148,5 +2148,226 @@ html {
 .dark .text-charcoal {
   color: #f5ece5;
 }
-`n/* -- New AddPersonForm Styles -- */`n.form-section {`n  padding: 16px;`n  background: #f8fafc;`n  border-radius: 12px;`n  border: 1px solid #e2e8f0;`n  margin-bottom: 20px;`n}`n`n.section-title {`n  font-size: 14px;`n  font-weight: 700;`n  color: #475569;`n  margin: 0 0 16px;`n  text-transform: uppercase;`n  letter-spacing: 0.05em;`n}`n`n.married-toggle-field {`n  margin: 0 4px 20px;`n  padding: 12px 16px;`n  background: #eff6ff;`n  border-radius: 10px;`n  border: 1px solid #bfdbfe;`n}`n`n.checkbox-label {`n  display: flex;`n  align-items: center;`n  gap: 10px;`n  cursor: pointer;`n  font-weight: 600;`n  color: #1e40af;`n  user-select: none;`n}`n`n.checkbox-label input[type=\"checkbox\"] {`n  width: 20px;`n  height: 20px;`n  cursor: pointer;`n}`n`n.spouse-section {`n  background: #fff7ed;`n  border-color: #ffedd5;`n  animation: slideDown 0.3s ease-out;`n}`n`n@keyframes slideDown {`n  from { opacity: 0; transform: translateY(-10px); }`n  to { opacity: 1; transform: translateY(0); }`n}
-`n/* -- Spouse Search Styles -- */`n.spouse-type-selector {`n  display: flex;`n  gap: 20px;`n  margin-bottom: 20px;`n  padding: 8px;`n  background: rgba(255,255,255,0.5);`n  border-radius: 8px;`n}`n`n.radio-label {`n  display: flex;`n  align-items: center;`n  gap: 8px;`n  font-size: 14px;`n  cursor: pointer;`n  color: #334155;`n}`n`n.existing-spouse-search {`n  margin-top: 10px;`n}`n`n.search-results-list {`n  max-height: 200px;`n  overflow-y: auto;`n  border: 1px solid #e2e8f0;`n  border-radius: 8px;`n  background: white;`n  margin-bottom: 12px;`n}`n`n.search-result-item {`n  padding: 10px 14px;`n  border-bottom: 1px solid #f1f5f9;`n  cursor: pointer;`n  transition: background 0.15s;`n}`n`n.search-result-item:last-child {`n  border-bottom: none;`n}`n`n.search-result-item:hover {`n  background: #f8fafc;`n}`n`n.search-result-item.selected {`n  background: #eef2ff;`n  border-left: 4px solid #6366f1;`n}`n`n.item-name {`n  font-weight: 600;`n  font-size: 14px;`n  color: #1e293b;`n}`n`n.item-details {`n  font-size: 12px;`n  color: #64748b;`n}`n`n.search-hint {`n  font-size: 12px;`n  color: #94a3b8;`n  margin-bottom: 8px;`n  font-style: italic;`n}`n`n.selected-spouse-info {`n  padding: 10px;`n  background: #f0fdf4;`n  border: 1px solid #bbf7d0;`n  border-radius: 8px;`n  color: #166534;`n  font-size: 13px;`n}
+
+/* -- New AddPersonForm Styles -- */
+.form-section {
+  padding: 16px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #475569;
+  margin: 0 0 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.married-toggle-field {
+  margin: 0 4px 20px;
+  padding: 12px 16px;
+  background: #eff6ff;
+  border-radius: 10px;
+  border: 1px solid #bfdbfe;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-weight: 600;
+  color: #1e40af;
+  user-select: none;
+}
+
+.checkbox-label input[type=\"checkbox\"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+.spouse-section {
+  background: #fff7ed;
+  border-color: #ffedd5;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* -- Spouse Search Styles -- */
+.spouse-type-selector {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  padding: 8px;
+  background: rgba(255,255,255,0.5);
+  border-radius: 8px;
+}
+
+.radio-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  color: #334155;
+}
+
+.existing-spouse-search {
+  margin-top: 10px;
+}
+
+.search-results-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+  margin-bottom: 12px;
+}
+
+.search-result-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-item:hover {
+  background: #f8fafc;
+}
+
+.search-result-item.selected {
+  background: #eef2ff;
+  border-left: 4px solid #6366f1;
+}
+
+.item-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.item-details {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.search-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  font-style: italic;
+}
+
+.selected-spouse-info {
+  padding: 10px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  color: #166534;
+  font-size: 13px;
+}
+/* -- Floating Search Bar -- */
+.ft-floating-search-container {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  width: calc(100% - 32px);
+  max-width: 400px;
+  pointer-events: auto;
+}
+
+.ft-floating-search-container .search-panel {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+.ft-floating-search-container .search-input {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+  border: 1px solid #e2e8f0;
+}
+
+/* -- Selected Person Panel -- */
+.ft-floating-action-bar {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  background: #ffffff;
+  border-radius: 100px;
+  padding: 8px 12px 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.15);
+  border: 1px solid #e2e8f0;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  pointer-events: auto;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { transform: translate(-50%, 20px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+.ft-fab-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.ft-fab-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.ft-fab-btn {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.ft-fab-btn.edit {
+  background: #6366f1;
+  color: #ffffff;
+}
+
+.ft-fab-btn.edit:hover {
+  background: #4f46e5;
+}
+
+.ft-fab-btn.close {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.ft-fab-btn.close:hover {
+  background: #e2e8f0;
+}

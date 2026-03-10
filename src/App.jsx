@@ -13,8 +13,7 @@ const EXPORT_SIZES = ['A4', 'A3', 'A2'];
 
 function ActionSheet({
   open, onClose, ftRef, selectedId,
-  onAddPerson, onEditPerson, onAdminSettings, onWhatsApp,
-  searchTerm, setSearchTerm, searchResults, onSelectPerson,
+  onAddPerson, onAdminSettings, onWhatsApp,
 }) {
   const [exportSize, setExportSize] = useState('A3');
   const [exporting, setExporting] = useState(false);
@@ -43,46 +42,10 @@ function ActionSheet({
         <div className="ft-action-sheet-handle" />
 
         <div className="ft-action-section">
-          <div className="ft-action-section-header">Cari Anggota</div>
-          <div className="ft-action-search">
-            <input
-              className="ft-action-search-input"
-              type="text"
-              value={searchTerm}
-              placeholder="Ketik nama..."
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-            {searchResults.length > 0 && (
-              <div className="ft-action-search-results">
-                {searchResults.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className="ft-action-search-result"
-                    onClick={() => { onSelectPerson(p.id); setSearchTerm(''); onClose(); }}
-                  >
-                    {p.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="ft-action-section">
           <div className="ft-action-section-header">Anggota</div>
           <button type="button" className="ft-action-item" onClick={() => { onAddPerson(); onClose(); }}>
             <span className="ft-action-item-icon">+</span>
             <span>Tambah Anggota Baru</span>
-          </button>
-          <button
-            type="button"
-            className={"ft-action-item" + (!selectedId ? " disabled" : "")}
-            disabled={!selectedId}
-            onClick={() => { if (selectedId) { onEditPerson(); onClose(); } }}
-          >
-            <span className="ft-action-item-icon">Ed</span>
-            <span>Edit Anggota{!selectedId ? " (pilih dari pohon dulu)" : ""}</span>
           </button>
         </div>
 
@@ -201,6 +164,12 @@ export default function App() {
     return ids;
   }, [allPersons, searchTerm, selectedId]);
 
+  const selectedPersonName = useMemo(() => {
+    if (!selectedId || !allPersons) return null;
+    const p = allPersons.find((x) => x.id === selectedId);
+    return p ? p.name : null;
+  }, [selectedId, allPersons]);
+
   if (typeof window !== 'undefined') {
     const params = new URLSearchParams(window.location.search);
     if (params.get('setup') === '1') return <WhatsAppSetup />;
@@ -234,6 +203,58 @@ export default function App() {
           />
         )}
 
+        {!loading && !error && !treeResult.error && treeResult.roots && treeResult.persons && (
+          <div className="ft-floating-search-container">
+            <div className="search-panel">
+              <input
+                className="search-input"
+                type="text"
+                placeholder="Cari anggota..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              {searchResults.length > 0 && (
+                <div className="search-results">
+                  {searchResults.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="search-result"
+                      onClick={() => { setSelectedId(p.id); setSearchTerm(''); }}
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {selectedId && selectedPersonName && (
+          <div className="ft-floating-action-bar">
+            <span className="ft-fab-name" title={selectedPersonName}>
+              {selectedPersonName}
+            </span>
+            <div className="ft-fab-buttons">
+              <button
+                type="button"
+                className="ft-fab-btn edit"
+                onClick={() => setShowEditPersonModal(true)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className="ft-fab-btn close"
+                onClick={() => setSelectedId(null)}
+              >
+                Tutup
+              </button>
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
           className="ft-action-fab"
@@ -249,13 +270,8 @@ export default function App() {
           ftRef={ftRef}
           selectedId={selectedId}
           onAddPerson={() => setShowAddModal(true)}
-          onEditPerson={() => setShowEditPersonModal(true)}
           onAdminSettings={() => setShowAdminSettings(true)}
           onWhatsApp={() => setShowWhatsAppPanel(true)}
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          searchResults={searchResults}
-          onSelectPerson={setSelectedId}
         />
 
         {showWhatsAppPanel && <WhatsAppPanel onClose={() => setShowWhatsAppPanel(false)} />}
